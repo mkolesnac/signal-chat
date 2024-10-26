@@ -103,22 +103,20 @@ func (s *DynamoDBStorage) DeleteItem(pk, sk string) error {
 }
 
 // WriteItem Function to write an item to DynamoDBStorage
-func (s *DynamoDBStorage) WriteItem(pk, sk string, value any) error {
-	panicIfPointer(value)
-
+func (s *DynamoDBStorage) WriteItem(item WriteableItem) error {
 	// Marshal the `value` argument into a map of DynamoDBStorage attributes
-	av, err := dynamodbattribute.MarshalMap(value)
+	av, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
 		return fmt.Errorf("failed to marshal value to dynamodb attributes: %w", err)
 	}
 
 	// Add the partition key and sort key to the attribute map
-	av["PK"] = &dynamodb.AttributeValue{S: aws.String(pk)}
-	av["SK"] = &dynamodb.AttributeValue{S: aws.String(sk)}
+	av["pk"] = &dynamodb.AttributeValue{S: aws.String(item.GetPartitionKey())}
+	av["sk"] = &dynamodb.AttributeValue{S: aws.String(item.GetSortKey())}
 
 	// Create the PutItem input
 	input := &dynamodb.PutItemInput{
-		TableName: aws.String("YourTableName"), // Replace with your table name
+		TableName: aws.String(tableName),
 		Item:      av,
 	}
 
@@ -131,12 +129,8 @@ func (s *DynamoDBStorage) WriteItem(pk, sk string, value any) error {
 	return nil
 }
 
-func (s *DynamoDBStorage) BatchWriteItems(items []BatchWriteItem) error {
+func (s *DynamoDBStorage) BatchWriteItems(items []WriteableItem) error {
 	const maxBatchSize = 25
-
-	for _, item := range items {
-		panicIfPointer(item.Value)
-	}
 
 	// Split the items into batches of 25 (DynamoDB limit)
 	for i := 0; i < len(items); i += maxBatchSize {
@@ -148,12 +142,12 @@ func (s *DynamoDBStorage) BatchWriteItems(items []BatchWriteItem) error {
 		// Prepare the write requests for this batch
 		var writeRequests []*dynamodb.WriteRequest
 		for _, item := range items[i:end] {
-			av, err := dynamodbattribute.MarshalMap(item.Value)
+			av, err := dynamodbattribute.MarshalMap(item)
 			if err != nil {
 				return fmt.Errorf("failed to marshal item: %v", err)
 			}
-			av["PK"] = &dynamodb.AttributeValue{S: aws.String(item.PartitionKey)}
-			av["SK"] = &dynamodb.AttributeValue{S: aws.String(item.SortKey)}
+			av["pk"] = &dynamodb.AttributeValue{S: aws.String(item.GetPartitionKey())}
+			av["sk"] = &dynamodb.AttributeValue{S: aws.String(item.GetSortKey())}
 
 			writeRequests = append(writeRequests, &dynamodb.WriteRequest{
 				PutRequest: &dynamodb.PutRequest{
@@ -179,7 +173,7 @@ func (s *DynamoDBStorage) BatchWriteItems(items []BatchWriteItem) error {
 	return nil
 }
 
-// executeBatchWriteWithRetry executes a BatchWriteItem operation and retries if there are unprocessed items
+// executeBatchWriteWithRetry executes a Item operation and retries if there are unprocessed items
 func executeBatchWriteWithRetry(svc *dynamodb.DynamoDB, input *dynamodb.BatchWriteItemInput) error {
 	for {
 		// Perform the batch write operation

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -27,7 +28,7 @@ func (s *MemoryStorage) GetItem(pk, sk string, outPtr any) error {
 	key := getPrimaryKey(pk, sk)
 	item, ok := s.data[key]
 	if !ok {
-		return nil
+		return errors.New("key not found")
 	}
 	// Set the item of `outPtr` to the item retrieved from the map
 	outValue := reflect.ValueOf(outPtr)
@@ -72,28 +73,22 @@ func (s *MemoryStorage) DeleteItem(pk, sk string) error {
 	return nil
 }
 
-func (s *MemoryStorage) WriteItem(pk, sk string, value any) error {
-	panicIfPointer(value)
-
+func (s *MemoryStorage) WriteItem(item WriteableItem) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := getPrimaryKey(pk, sk)
-	s.data[key] = value
+	key := getPrimaryKey(item.GetPartitionKey(), item.GetSortKey())
+	s.data[key] = item
 	return nil
 }
 
-func (s *MemoryStorage) BatchWriteItems(items []BatchWriteItem) error {
-	for _, item := range items {
-		panicIfPointer(item.Value)
-	}
-
+func (s *MemoryStorage) BatchWriteItems(items []WriteableItem) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, item := range items {
-		key := getPrimaryKey(item.PartitionKey, item.SortKey)
-		s.data[key] = item.Value
+		key := getPrimaryKey(item.GetPartitionKey(), item.GetSortKey())
+		s.data[key] = item
 	}
 
 	return nil

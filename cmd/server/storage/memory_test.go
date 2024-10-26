@@ -6,8 +6,17 @@ import (
 
 // Struct for testing
 type TestItem struct {
-	Name  string
-	Value int
+	PartitionKey string
+	SortKey      string
+	Value        string
+}
+
+func (i TestItem) GetPartitionKey() string {
+	return i.PartitionKey
+}
+
+func (i TestItem) GetSortKey() string {
+	return i.SortKey
 }
 
 // Test for WriteItem and GetItem
@@ -21,8 +30,8 @@ func TestNewMemoryStorage(t *testing.T) {
 func TestWriteAndGetItem(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	item := TestItem{Name: "test", Value: 1}
-	err := storage.WriteItem("pk1", "sk1", item)
+	item := TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"}
+	err := storage.WriteItem(item)
 	if err != nil {
 		t.Fatalf("WriteItem failed: %v", err)
 	}
@@ -40,8 +49,38 @@ func TestWriteAndGetItem(t *testing.T) {
 	}
 }
 
+func TestGetItem_ItemDoesntExist(t *testing.T) {
+	// Arrange
+	storage := NewMemoryStorage()
+
+	// Act
+	var result TestItem
+	err := storage.GetItem("pk1", "sk1", &result)
+	// Assert
+	if err == nil {
+		t.Fatalf("Expected GetItem to return error but got %v", err)
+	}
+}
+
 // Test GetItem with invalid pointer (panic expected)
 func TestGetItem_InvalidPointer(t *testing.T) {
+	// Arrange
+	storage := NewMemoryStorage()
+
+	defer func() {
+		// Assert
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic for pointer of invalid type")
+		}
+	}()
+
+	// Act
+	var result string
+	_ = storage.GetItem("pk1", "sk1", result)
+}
+
+// Test GetItem with nil pointer (panic expected)
+func TestGetItem_NilPointer(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
 
@@ -53,7 +92,7 @@ func TestGetItem_InvalidPointer(t *testing.T) {
 	}()
 
 	// Act
-	var result string
+	var result *TestItem
 	_ = storage.GetItem("pk1", "sk1", result)
 }
 
@@ -61,7 +100,8 @@ func TestGetItem_InvalidPointer(t *testing.T) {
 func TestGetItem_TypeMismatch(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	err := storage.WriteItem("pk1", "sk1", "TestItem")
+	item := TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"}
+	err := storage.WriteItem(item)
 	if err != nil {
 		t.Fatalf("WriteItem failed: %v", err)
 	}
@@ -85,15 +125,15 @@ func TestGetItem_TypeMismatch(t *testing.T) {
 func TestQueryItems(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	err := storage.WriteItem("pk1", "profile1", TestItem{Name: "test1", Value: 1})
-	err = storage.WriteItem("pk1", "profile2", TestItem{Name: "test2", Value: 2})
+	err := storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"})
+	err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"})
 	if err != nil {
 		t.Fatalf("WriteItem failed: %v", err)
 	}
 
 	// Act
 	var results []TestItem
-	err = storage.QueryItems("pk1", "profile", &results)
+	err = storage.QueryItems("pk1", "sk", &results)
 	if err != nil {
 		t.Fatalf("QueryItems failed: %v", err)
 	}
@@ -142,7 +182,7 @@ func TestQueryItems_NotSlice(t *testing.T) {
 func TestDeleteItem(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	err := storage.WriteItem("pk1", "sk1", "Item1")
+	err := storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"})
 	if err != nil {
 		t.Fatalf("WriteItem failed: %v", err)
 	}
@@ -154,12 +194,12 @@ func TestDeleteItem(t *testing.T) {
 	}
 
 	// Assert
-	var result string
+	var result TestItem
 	err = storage.GetItem("pk1", "sk1", &result)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
-	if result != "" {
+	if result.Value != "" {
 		t.Fatalf("Expected no item after deletion, got %v", result)
 	}
 }
@@ -168,9 +208,9 @@ func TestDeleteItem(t *testing.T) {
 func TestBatchWriteItems(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	items := []BatchWriteItem{
-		{PartitionKey: "pk1", SortKey: "sk1", Value: TestItem{Name: "test1", Value: 1}},
-		{PartitionKey: "pk1", SortKey: "sk2", Value: TestItem{Name: "test2", Value: 2}},
+	items := []WriteableItem{
+		TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"},
+		TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"},
 	}
 
 	// Act
@@ -182,44 +222,7 @@ func TestBatchWriteItems(t *testing.T) {
 	// Assert
 	var result TestItem
 	_ = storage.GetItem("pk1", "sk1", &result)
-	if result != items[0].Value {
-		t.Fatalf("Expected %v, got %v", items[0].Value, result)
+	if result != items[0] {
+		t.Fatalf("Expected %v, got %v", items[0], result)
 	}
-}
-
-// Test for BatchWriteItems with pointer value (should return error)
-func TestBatchWriteItems_WithPointer(t *testing.T) {
-	// Arrange
-	storage := NewMemoryStorage()
-	items := []BatchWriteItem{
-		{PartitionKey: "pk1", SortKey: "sk1", Value: TestItem{Name: "test1", Value: 1}},
-		{PartitionKey: "pk1", SortKey: "sk2", Value: &TestItem{Name: "test2", Value: 2}},
-	}
-
-	defer func() {
-		// Assert
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic when value field is a pointer")
-		}
-	}()
-
-	// Act
-	_ = storage.BatchWriteItems(items)
-}
-
-// Test for GetItem with invalid pointer
-func TestWriteItem_WithPointer(t *testing.T) {
-	// Arrange
-	storage := NewMemoryStorage()
-
-	defer func() {
-		// Assert
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic value arg is pointer")
-		}
-	}()
-
-	// Act
-	item := TestItem{Name: "Test", Value: 42}
-	_ = storage.WriteItem("pk1", "sk1", &item)
 }
