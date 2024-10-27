@@ -8,11 +8,8 @@ import (
 var privateKey = byteArray32()
 var identityKeyPair = ecc.CreateKeyPair(privateKey[:])
 
-var TestingAccount, _ = models.NewAccount("123", "test", "signed1")
 var TestingIdentityKey = models.NewIdentityKey("123", identityKeyPair.PublicKey().PublicKey())
 var TestingSignedPreKey = NewTestingSignedPreKey("123", "signed1", byteArray32())
-var TestingPreKey1 = models.NewPreKey("123", "prekey1", byteArray32())
-var TestingPreKey2 = models.NewPreKey("123", "prekey2", byteArray32())
 
 func byteArray32() [32]byte {
 	var byteArray [32]byte
