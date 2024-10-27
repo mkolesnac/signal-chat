@@ -4,8 +4,8 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/keys/mocks"
 	"signal-chat/cmd/server/models"
+	"signal-chat/cmd/server/storage/mocks"
 	"testing"
 )
 
@@ -52,7 +52,7 @@ func TestKeyService_GetPublicKeys_WhenPreKeysAvailable(t *testing.T) {
 		Run(func(args mock.Arguments) {
 			*args.Get(2).(*models.Account) = *TestingAccount
 		}).Return(nil)
-	mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
+	mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityPublicKey")).
 		Run(func(args mock.Arguments) {
 			*args.Get(2).(*models.IdentityKey) = *TestingIdentityKey
 		}).Return(nil)
@@ -89,7 +89,7 @@ func TestKeyService_GetPublicKeys_ReturnsResponseWithoutPreKeyWhenPreKeysNotAvai
 		Run(func(args mock.Arguments) {
 			*args.Get(2).(*models.Account) = *TestingAccount
 		}).Return(nil)
-	mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
+	mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityPublicKey")).
 		Run(func(args mock.Arguments) {
 			*args.Get(2).(*models.IdentityKey) = *TestingIdentityKey
 		}).Return(nil)
@@ -133,7 +133,7 @@ func TestKeyService_VerifySignature_WhenValidSignature(t *testing.T) {
 	mockStorage := new(mocks.MockStorage)
 	keyService := NewKeyService(mockStorage)
 	// Mock the identity key
-	mockStorage.On("GetItem", TestingIdentityKey.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
+	mockStorage.On("GetItem", TestingIdentityKey.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityPublicKey")).
 		Run(func(args mock.Arguments) {
 			*args.Get(2).(*models.IdentityKey) = *TestingIdentityKey
 		}).
@@ -152,7 +152,7 @@ func TestKeyService_VerifySignature_WhenIdentityKeyNotFound(t *testing.T) {
 	mockStorage := new(mocks.MockStorage)
 	keyService := NewKeyService(mockStorage)
 	// Mock error in GetItem
-	mockStorage.On("GetItem", mock.Anything, mock.Anything, mock.AnythingOfType("*models.IdentityKey")).
+	mockStorage.On("GetItem", mock.Anything, mock.Anything, mock.AnythingOfType("*models.IdentityPublicKey")).
 		Return(errors.New("item not found"))
 
 	// Act
@@ -201,10 +201,10 @@ func TestKeyService_VerifyAccountExists_WhenAccountNotFound(t *testing.T) {
 func TestKeyService_UploadNewPreKeys(t *testing.T) {
 	// Define the request object
 	req := UploadPreKeysRequest{
-		SignedPreKey: SignedPreKeyRequest{KeyId: TestingSignedPreKey.ID, PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
+		SignedPreKey: SignedPreKeyRequest{KeyID: TestingSignedPreKey.ID, PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
 		PreKeys: []PreKeyRequest{
-			{KeyId: TestingPreKey1.ID, PublicKey: TestingPreKey1.PublicKey[:]},
-			{KeyId: TestingPreKey2.ID, PublicKey: TestingPreKey2.PublicKey[:]},
+			{KeyID: TestingPreKey1.ID, PublicKey: TestingPreKey1.PublicKey[:]},
+			{KeyID: TestingPreKey2.ID, PublicKey: TestingPreKey2.PublicKey[:]},
 		},
 	}
 
