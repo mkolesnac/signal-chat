@@ -1,8 +1,10 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -38,6 +40,13 @@ func (s *DynamoDBStorage) GetItem(pk, sk string, outPtr any) error {
 
 	result, err := s.svc.GetItem(input)
 	if err != nil {
+		var aerr awserr.Error
+		if errors.As(err, &aerr) {
+			if aerr.Code() == dynamodb.ErrCodeResourceNotFoundException {
+				return ErrNotFound
+			}
+		}
+
 		return fmt.Errorf("failed to get item: %v", err)
 	}
 

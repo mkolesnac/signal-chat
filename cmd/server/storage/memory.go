@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -28,7 +27,7 @@ func (s *MemoryStorage) GetItem(pk, sk string, outPtr any) error {
 	key := getPrimaryKey(pk, sk)
 	item, ok := s.data[key]
 	if !ok {
-		return errors.New("key not found")
+		return ErrNotFound
 	}
 	// Set the item of `outPtr` to the item retrieved from the map
 	outValue := reflect.ValueOf(outPtr)
