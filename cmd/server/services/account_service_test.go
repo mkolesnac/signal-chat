@@ -1,21 +1,22 @@
-package accounts
+package services
 
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/storage/mocks"
+	"signal-chat/cmd/server/api"
+	"signal-chat/cmd/server/services/mocks"
 	"testing"
 )
 
 func TestAccountService_CreateAccount(t *testing.T) {
 	// Define the request object
-	req := CreateAccountRequest{
+	req := api.CreateAccountRequest{
 		IdentityPublicKey: TestingIdentityKey.PublicKey[:],
-		SignedPreKey:      SignedPreKeyRequest{KeyID: TestingSignedPreKey.ID, PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
+		SignedPreKey:      api.SignedPreKeyRequest{KeyID: TestingSignedPreKey.ID, PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
 	}
 
-	t.Run("successfuly creates account", func(t *testing.T) {
+	t.Run("successfully creates account", func(t *testing.T) {
 		// Arrange
 		mockStorage := new(mocks.MockStorage)
 		service := NewAccountService(mockStorage)

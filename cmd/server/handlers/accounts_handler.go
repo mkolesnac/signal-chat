@@ -1,25 +1,27 @@
-package accounts
+package handlers
 
 import (
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/auth"
+	"signal-chat/cmd/server/services"
 )
 
-type Handler struct {
-	accounts AccountService
+type AccountHandler struct {
+	accounts services.AccountService
 }
 
-func NewHandler(accounts AccountService) *Handler {
-	return &Handler{
+func NewAccountHandler(accounts services.AccountService) *AccountHandler {
+	return &AccountHandler{
 		accounts: accounts,
 	}
 }
 
 // PUT /account
-func (h *Handler) CreateAccount(c echo.Context) error {
-	var req CreateAccountRequest
+func (h *AccountHandler) CreateAccount(c echo.Context) error {
+	var req api.CreateAccountRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
 	}

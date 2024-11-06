@@ -1,4 +1,4 @@
-package keys
+package services
 
 import (
 	"github.com/crossle/libsignal-protocol-go/ecc"

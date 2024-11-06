@@ -12,6 +12,8 @@ type Credentials struct {
 	Password string
 }
 
+// TODO: Use more secure Auth mechanism
+//
 //goland:noinspection GoErrorStringFormat
 func ParseBasicAuthHeader(c echo.Context) (*Credentials, error) {
 	// Extract Authorization header

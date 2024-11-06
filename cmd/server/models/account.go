@@ -3,12 +3,12 @@ package models
 import (
 	"fmt"
 	"golang.org/x/crypto/bcrypt"
+	"strings"
 )
 
 type Account struct {
 	PartitionKey   string `dynamodbav:"pk"`
 	SortKey        string `dynamodbav:"sk"`
-	ID             string `dynamodbav:"id"`
 	PasswordHash   []byte `dynamodbav:"passwordHash"`
 	SignedPreKeyID string `dynamodbav:"signedPreKeyID"`
 }
@@ -21,7 +21,6 @@ func NewAccount(id, pwd, signedPreKeyID string) (*Account, error) {
 	return &Account{
 		PartitionKey:   AccountPartitionKey(id),
 		SortKey:        AccountSortKey(id),
-		ID:             id,
 		PasswordHash:   hash,
 		SignedPreKeyID: signedPreKeyID,
 	}, nil
@@ -33,6 +32,10 @@ func (a *Account) GetPartitionKey() string {
 
 func (a *Account) GetSortKey() string {
 	return a.SortKey
+}
+
+func (a *Account) GetID() string {
+	return strings.Replace(a.PartitionKey, "acc#", "", 1)
 }
 
 func (a *Account) VerifyPassword(password string) bool {

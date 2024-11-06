@@ -33,8 +33,8 @@ func (s *DynamoDBStorage) GetItem(pk, sk string, outPtr any) error {
 	input := &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
-			"PK": {S: aws.String(pk)},
-			"SK": {S: aws.String(sk)},
+			"pk": {S: aws.String(pk)},
+			"sk": {S: aws.String(sk)},
 		},
 	}
 
@@ -62,14 +62,44 @@ func (s *DynamoDBStorage) GetItem(pk, sk string, outPtr any) error {
 	return nil
 }
 
-// QueryItems queries items from DynamoDB by sort key prefix
-func (s *DynamoDBStorage) QueryItems(pk, skPrefix string, outSlicePtr any) error {
+// QueryBySortKeyPrefix queries items from DynamoDB by sort key prefix
+func (s *DynamoDBStorage) QueryBySortKeyPrefix(pk, skPrefix string, outSlicePtr any) error {
 	panicIfNotSlicePointer(outSlicePtr)
 
 	// Prepare the query input
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(tableName),
-		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
+		KeyConditionExpression: aws.String("pk = :pk AND begins_with(sk, :sk)"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":pk": {S: aws.String(pk)},
+			":sk": {S: aws.String(skPrefix)},
+		},
+	}
+
+	// Perform the query operation
+	result, err := s.svc.Query(input)
+	if err != nil {
+		return fmt.Errorf("failed to query items: %w", err)
+	}
+
+	// Unmarshal the result into supplied argument
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, outSlicePtr)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal query result: %w", err)
+	}
+
+	return nil
+}
+
+// QueryItems queries items from DynamoDB by sort key prefix
+func (s *DynamoDBStorage) QueryItems(pk, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error {
+	panicIfNotSlicePointer(outSlicePtr)
+	panicIfInvalidQueryCondition(queryCondition)
+
+	// Prepare the query input
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(tableName),
+		KeyConditionExpression: aws.String(string(queryCondition)),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":pk":       {S: aws.String(pk)},
 			":skPrefix": {S: aws.String(skPrefix)},
@@ -97,8 +127,8 @@ func (s *DynamoDBStorage) DeleteItem(pk, sk string) error {
 	input := &dynamodb.DeleteItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
-			"PK": {S: aws.String(pk)},
-			"SK": {S: aws.String(sk)},
+			"pk": {S: aws.String(pk)},
+			"sk": {S: aws.String(sk)},
 		},
 	}
 
@@ -112,7 +142,7 @@ func (s *DynamoDBStorage) DeleteItem(pk, sk string) error {
 }
 
 // WriteItem Function to write an item to DynamoDBStorage
-func (s *DynamoDBStorage) WriteItem(item WriteableItem) error {
+func (s *DynamoDBStorage) WriteItem(item TableItem) error {
 	// Marshal the `value` argument into a map of DynamoDBStorage attributes
 	av, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
@@ -138,7 +168,7 @@ func (s *DynamoDBStorage) WriteItem(item WriteableItem) error {
 	return nil
 }
 
-func (s *DynamoDBStorage) BatchWriteItems(items []WriteableItem) error {
+func (s *DynamoDBStorage) BatchWriteItems(items []TableItem) error {
 	const maxBatchSize = 25
 
 	// Split the items into batches of 25 (DynamoDB limit)

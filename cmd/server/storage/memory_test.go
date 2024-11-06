@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -123,59 +124,98 @@ func TestGetItem_TypeMismatch(t *testing.T) {
 
 // Test for QueryItems
 func TestQueryItems(t *testing.T) {
-	// Arrange
-	storage := NewMemoryStorage()
-	err := storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"})
-	err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"})
-	if err != nil {
-		t.Fatalf("WriteItem failed: %v", err)
-	}
-
-	// Act
-	var results []TestItem
-	err = storage.QueryItems("pk1", "sk", &results)
-	if err != nil {
-		t.Fatalf("QueryItems failed: %v", err)
-	}
-
-	// Assert
-	if len(results) != 2 {
-		t.Errorf("Expected 2 results, got %d", len(results))
-	}
-}
-
-// Test case where outSlicePtr is not a pointer
-func TestQueryItems_NotPointer(t *testing.T) {
-	// Arrange
-	storage := NewMemoryStorage()
-
-	defer func() {
-		// Assert
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic for non-pointer slice")
+	t.Run("success with BEGINS_WITH query condition", func(t *testing.T) {
+		// Arrange
+		storage := NewMemoryStorage()
+		err := storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"})
+		err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"})
+		err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "xx", Value: "test3"})
+		if err != nil {
+			t.Fatalf("WriteItem failed: %v", err)
 		}
-	}()
 
-	// Act
-	var results []string
-	_ = storage.QueryItems("pk1", "profile", results)
-}
-
-// Test case where outSlicePtr is not a slice
-func TestQueryItems_NotSlice(t *testing.T) {
-	// Arrange
-	storage := NewMemoryStorage()
-
-	defer func() {
-		// Assert
-		if r := recover(); r == nil {
-			t.Fatal("Expected panic for non-slice pointer")
+		// Act
+		var results []TestItem
+		err = storage.QueryItems("pk1", "sk", BEGINS_WITH, &results)
+		if err != nil {
+			t.Fatalf("QueryItems failed: %v", err)
 		}
-	}()
 
-	// Act
-	var results int
-	_ = storage.QueryItems("pk1", "sk", &results)
+		// Assert
+		assert.Len(t, results, 2)
+		var sortKeys []string
+		for _, item := range results {
+			sortKeys = append(sortKeys, item.SortKey)
+		}
+		assert.Equal(t, sortKeys[0], "sk1")
+		assert.Equal(t, sortKeys[1], "sk2")
+	})
+	t.Run("success with GREATER_THAN query condition", func(t *testing.T) {
+		// Arrange
+		storage := NewMemoryStorage()
+		err := storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"})
+		err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"})
+		err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk3", Value: "test3"})
+		if err != nil {
+			t.Fatalf("WriteItem failed: %v", err)
+		}
+
+		// Act
+		var results []TestItem
+		err = storage.QueryItems("pk1", "sk2", GREATER_THAN, &results)
+		if err != nil {
+			t.Fatalf("QueryItems failed: %v", err)
+		}
+
+		// Assert
+		assert.Len(t, results, 1)
+		assert.Equal(t, results[0].SortKey, "sk3")
+	})
+	t.Run("success with LOWER_THAN query condition", func(t *testing.T) {
+		// Arrange
+		storage := NewMemoryStorage()
+		err := storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"})
+		err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"})
+		err = storage.WriteItem(TestItem{PartitionKey: "pk1", SortKey: "sk3", Value: "test3"})
+		if err != nil {
+			t.Fatalf("WriteItem failed: %v", err)
+		}
+
+		// Act
+		var results []TestItem
+		err = storage.QueryItems("pk1", "sk2", LOWER_THAN, &results)
+		if err != nil {
+			t.Fatalf("QueryItems failed: %v", err)
+		}
+
+		// Assert
+		assert.Len(t, results, 1)
+		assert.Equal(t, results[0].SortKey, "sk1")
+	})
+	t.Run("panics when outSlicePtr not valid pointer", func(t *testing.T) {
+		// Arrange
+		storage := NewMemoryStorage()
+
+		// Act
+		var results []string
+		assert.Panics(t, func() { _ = storage.QueryItems("pk1", "profile", BEGINS_WITH, results) })
+	})
+	t.Run("panics when outSlicePtr not slice pointer", func(t *testing.T) {
+		// Arrange
+		storage := NewMemoryStorage()
+
+		// Act
+		var results int
+		assert.Panics(t, func() { _ = storage.QueryItems("pk1", "profile", BEGINS_WITH, &results) })
+	})
+	t.Run("panics when invalid query condition", func(t *testing.T) {
+		// Arrange
+		storage := NewMemoryStorage()
+
+		// Act
+		var results []TestItem
+		assert.Panics(t, func() { _ = storage.QueryItems("pk1", "sk", "invalid condition", &results) })
+	})
 }
 
 // Test for DeleteItem
@@ -194,21 +234,14 @@ func TestDeleteItem(t *testing.T) {
 	}
 
 	// Assert
-	var result TestItem
-	err = storage.GetItem("pk1", "sk1", &result)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-	if result.Value != "" {
-		t.Fatalf("Expected no item after deletion, got %v", result)
-	}
+	assert.Empty(t, storage.data)
 }
 
 // Test for BatchWriteItems
 func TestBatchWriteItems(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	items := []WriteableItem{
+	items := []TableItem{
 		TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"},
 		TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"},
 	}
@@ -220,9 +253,5 @@ func TestBatchWriteItems(t *testing.T) {
 	}
 
 	// Assert
-	var result TestItem
-	_ = storage.GetItem("pk1", "sk1", &result)
-	if result != items[0] {
-		t.Fatalf("Expected %v, got %v", items[0], result)
-	}
+	assert.Len(t, storage.data, 2)
 }

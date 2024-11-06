@@ -1,6 +1,8 @@
 package models
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type PreKey struct {
 	PartitionKey string   `dynamodbav:"pk"`
@@ -26,7 +28,7 @@ func (p *PreKey) GetSortKey() string {
 }
 
 func PreKeyPartitionKey(accountId string) string {
-	return fmt.Sprintf("acc#%s", accountId)
+	return AccountPartitionKey(accountId)
 }
 
 func PreKeySortKey(keyId string) string {

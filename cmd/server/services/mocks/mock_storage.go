@@ -19,17 +19,17 @@ func (m *MockStorage) DeleteItem(pk, sk string) error {
 	return args.Error(0)
 }
 
-func (m *MockStorage) WriteItem(item storage.WriteableItem) error {
+func (m *MockStorage) WriteItem(item storage.TableItem) error {
 	args := m.Called(item)
 	return args.Error(0)
 }
 
-func (m *MockStorage) BatchWriteItems(items []storage.WriteableItem) error {
+func (m *MockStorage) BatchWriteItems(items []storage.TableItem) error {
 	args := m.Called(items)
 	return args.Error(0)
 }
 
-func (m *MockStorage) QueryItems(pk, skPrefix string, out interface{}) error {
-	args := m.Called(pk, skPrefix, out)
+func (m *MockStorage) QueryItems(pk, skPrefix string, queryCondition storage.QueryCondition, out interface{}) error {
+	args := m.Called(pk, skPrefix, queryCondition, out)
 	return args.Error(0)
 }

@@ -1,7 +1,5 @@
 package models
 
-import "fmt"
-
 type IdentityKey struct {
 	PartitionKey string   `dynamodbav:"pk"`
 	SortKey      string   `dynamodbav:"sk"`
@@ -25,9 +23,10 @@ func (i *IdentityKey) GetSortKey() string {
 }
 
 func IdentityKeyPartitionKey(accountId string) string {
-	return fmt.Sprintf("acc#%s", accountId)
+	return AccountPartitionKey(accountId)
 }
 
 func IdentityKeySortKey() string {
+
 	return "identityKey"
 }

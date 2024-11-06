@@ -30,7 +30,7 @@ func (s *SignedPreKey) GetSortKey() string {
 }
 
 func SignedKeyPartitionKey(accountId string) string {
-	return fmt.Sprintf("acc#%s", accountId)
+	return AccountPartitionKey(accountId)
 }
 
 func SignedKeySortKey(keyId string) string {

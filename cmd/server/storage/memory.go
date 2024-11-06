@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -41,8 +42,9 @@ func (s *MemoryStorage) GetItem(pk, sk string, outPtr any) error {
 	return nil
 }
 
-func (s *MemoryStorage) QueryItems(pk, skPrefix string, outSlicePtr any) error {
+func (s *MemoryStorage) QueryItems(pk, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error {
 	panicIfNotSlicePointer(outSlicePtr)
+	panicIfInvalidQueryCondition(queryCondition)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -52,13 +54,38 @@ func (s *MemoryStorage) QueryItems(pk, skPrefix string, outSlicePtr any) error {
 	// Dereference the pointer to access the underlying slice value
 	sliceValue := outValue.Elem()
 
+	// Create a function that will evaluate sort key matches based on the specified query condition
+	type FilterFunc = func(sk string) bool
+	var filter FilterFunc
+	if queryCondition == BEGINS_WITH {
+		filter = func(sk string) bool {
+			return strings.HasPrefix(sk, skPrefix)
+		}
+	} else if queryCondition == GREATER_THAN {
+		filter = func(sk string) bool {
+			return sk > skPrefix
+		}
+	} else if queryCondition == LOWER_THAN {
+		filter = func(sk string) bool {
+			return sk < skPrefix
+		}
+	}
+
 	for k, v := range s.data {
 		parts := strings.Split(k, ":")
-		if pk == parts[0] && strings.HasPrefix(parts[1], skPrefix) {
+		if pk == parts[0] && filter(parts[1]) {
 			item := reflect.ValueOf(v)
 			sliceValue.Set(reflect.Append(sliceValue, item))
 		}
 	}
+
+	// Sort the slice in ascending order by sort keys
+	sort.Slice(sliceValue.Interface(), func(i, j int) bool {
+		itemI := sliceValue.Index(i).Interface().(TableItem)
+		itemJ := sliceValue.Index(j).Interface().(TableItem)
+
+		return itemI.GetSortKey() < itemJ.GetSortKey()
+	})
 
 	return nil
 }
@@ -72,7 +99,7 @@ func (s *MemoryStorage) DeleteItem(pk, sk string) error {
 	return nil
 }
 
-func (s *MemoryStorage) WriteItem(item WriteableItem) error {
+func (s *MemoryStorage) WriteItem(item TableItem) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -81,7 +108,7 @@ func (s *MemoryStorage) WriteItem(item WriteableItem) error {
 	return nil
 }
 
-func (s *MemoryStorage) BatchWriteItems(items []WriteableItem) error {
+func (s *MemoryStorage) BatchWriteItems(items []TableItem) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

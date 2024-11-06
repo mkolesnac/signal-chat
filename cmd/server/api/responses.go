@@ -1,4 +1,4 @@
-package keys
+package api
 
 type GetPublicKeyResponse struct {
 	IdentityPublicKey [32]byte              `json:"identityPublicKey"`
@@ -15,4 +15,8 @@ type SignedPreKeyResponse struct {
 type PreKeyResponse struct {
 	KeyID     string   `json:"keyId"`
 	PublicKey [32]byte `json:"publicKey"`
+}
+
+type SendMessageResponse struct {
+	MessageID string `json:"messageId"`
 }

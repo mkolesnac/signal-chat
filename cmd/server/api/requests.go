@@ -1,8 +1,17 @@
-package keys
+package api
+
+type CreateAccountRequest struct {
+	IdentityPublicKey []byte              `json:"identityKey" validate:"required,base64_32bytes"`
+	SignedPreKey      SignedPreKeyRequest `json:"signedPreKey" validate:"required"`
+}
 
 type UploadPreKeysRequest struct {
 	SignedPreKey SignedPreKeyRequest `json:"signedPreKey" validate:"required"`
 	PreKeys      []PreKeyRequest     `json:"preKeys" validate:"required"`
+}
+
+type SendMessageRequest struct {
+	CipherText string `json:"ciphertext"`
 }
 
 type SignedPreKeyRequest struct {

@@ -4,13 +4,6 @@ import (
 	"reflect"
 )
 
-func panicIfPointer(value any) {
-	v := reflect.ValueOf(value)
-	if v.Kind() == reflect.Ptr {
-		panic("value parameter cannot be a pointer")
-	}
-}
-
 func panicIfNotPointer(outPtr any) {
 	// Ensure that `ptr` is a non-nil pointer
 	outValue := reflect.ValueOf(outPtr)
@@ -30,5 +23,11 @@ func panicIfNotSlicePointer(outSlicePtr any) {
 	outElem := outValue.Elem()
 	if outElem.Kind() != reflect.Slice {
 		panic("outSlicePtr parameter must be a pointer to a slice")
+	}
+}
+
+func panicIfInvalidQueryCondition(condition QueryCondition) {
+	if condition != BEGINS_WITH && condition != GREATER_THAN && condition != LOWER_THAN {
+		panic("invalid query condition")
 	}
 }
