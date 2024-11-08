@@ -2,22 +2,24 @@ package models
 
 import (
 	"fmt"
+	"signal-chat/cmd/server/storage"
 )
 
 type SignedPreKey struct {
-	PartitionKey string   `dynamodbav:"pk"`
-	SortKey      string   `dynamodbav:"sk"`
-	ID           string   `dynamodbav:"id"`
-	PublicKey    [32]byte `dynamodbav:"publicKey"`
-	Signature    [64]byte `dynamodbav:"signature"`
+	storage.TableItem
+	PublicKey [32]byte `dynamodbav:"publicKey"`
+	Signature [64]byte `dynamodbav:"signature"`
 }
 
 func NewSignedPreKey(accountId, keyId string, publicKey [32]byte, signature [64]byte) *SignedPreKey {
 	return &SignedPreKey{
-		PartitionKey: SignedKeyPartitionKey(accountId),
-		SortKey:      SignedKeySortKey(keyId),
-		PublicKey:    publicKey,
-		Signature:    signature,
+		TableItem: storage.TableItem{
+			PartitionKey: SignedKeyPartitionKey(accountId),
+			SortKey:      SignedKeySortKey(keyId),
+			CreatedAt:    getTimestamp(),
+		},
+		PublicKey: publicKey,
+		Signature: signature,
 	}
 }
 

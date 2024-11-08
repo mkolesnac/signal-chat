@@ -241,7 +241,7 @@ func TestDeleteItem(t *testing.T) {
 func TestBatchWriteItems(t *testing.T) {
 	// Arrange
 	storage := NewMemoryStorage()
-	items := []TableItem{
+	items := []PrimaryKeyProvider{
 		TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"},
 		TestItem{PartitionKey: "pk1", SortKey: "sk2", Value: "test2"},
 	}

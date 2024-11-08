@@ -4,8 +4,8 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/services/mocks"
+	"signal-chat/internal/api"
 	"testing"
 )
 
@@ -13,7 +13,7 @@ func TestAccountService_CreateAccount(t *testing.T) {
 	// Define the request object
 	req := api.CreateAccountRequest{
 		IdentityPublicKey: TestingIdentityKey.PublicKey[:],
-		SignedPreKey:      api.SignedPreKeyRequest{KeyID: TestingSignedPreKey.ID, PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
+		SignedPreKey:      api.SignedPreKeyRequest{KeyID: TestingSignedPreKey.GetID(), PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
 	}
 
 	t.Run("successfully creates account", func(t *testing.T) {

@@ -4,10 +4,10 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/models"
 	"signal-chat/cmd/server/services/mocks"
 	"signal-chat/cmd/server/storage"
+	"signal-chat/internal/api"
 	"testing"
 )
 
@@ -73,9 +73,9 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, response)
 		assert.Equal(t, TestingIdentityKey.PublicKey, response.IdentityPublicKey)
-		assert.Equal(t, TestingSignedPreKey.ID, response.SignedPreKey.KeyID)
+		assert.Equal(t, TestingSignedPreKey.GetID(), response.SignedPreKey.KeyID)
 		assert.Equal(t, TestingSignedPreKey.PublicKey, response.SignedPreKey.PublicKey)
-		assert.Equal(t, TestingSignedPreKey.ID, response.PreKey.KeyID)
+		assert.Equal(t, TestingSignedPreKey.GetID(), response.PreKey.KeyID)
 		assert.Equal(t, TestingSignedPreKey.PublicKey, response.PreKey.PublicKey)
 		mockStorage.AssertExpectations(t)
 	})
@@ -162,7 +162,7 @@ func TestKeyService_VerifySignature(t *testing.T) {
 func TestKeyService_UploadNewPreKeys(t *testing.T) {
 	// Define the request object
 	req := api.UploadPreKeysRequest{
-		SignedPreKey: api.SignedPreKeyRequest{KeyID: TestingSignedPreKey.ID, PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
+		SignedPreKey: api.SignedPreKeyRequest{KeyID: TestingSignedPreKey.GetID(), PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
 		PreKeys: []api.PreKeyRequest{
 			{KeyID: TestingPreKey1.ID, PublicKey: TestingPreKey1.PublicKey[:]},
 			{KeyID: TestingPreKey2.ID, PublicKey: TestingPreKey2.PublicKey[:]},
@@ -176,13 +176,13 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 		keyService := NewKeyService(mockStorage, mockAccounts)
 		// Define the custom matcher for *models.Account with SignedPreKeyID == TestingSignedPreKey.ID
 		mockAccounts.On("GetAccount", TestingAccount.GetID()).Return(TestingAccount, nil)
-		accountMatcher := mock.MatchedBy(func(item storage.TableItem) bool {
+		accountMatcher := mock.MatchedBy(func(item storage.PrimaryKeyProvider) bool {
 			account, ok := item.(*models.Account)
-			return ok && account.SignedPreKeyID == TestingSignedPreKey.ID
+			return ok && account.SignedPreKeyID == TestingSignedPreKey.GetID()
 		})
 		mockStorage.On("WriteItem", accountMatcher).Return(nil)
 		mockStorage.On("WriteItem", mock.AnythingOfType("*models.SignedPreKey")).Return(nil)
-		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.TableItem")).Return(nil)
+		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.PrimaryKeyProvider")).Return(nil)
 
 		// Act
 		err := keyService.UploadNewPreKeys("123", req)
@@ -199,7 +199,7 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 		mockAccounts.On("GetAccount", TestingAccount.GetID()).Return(TestingAccount, nil)
 		mockStorage.On("WriteItem", mock.AnythingOfType("*models.Account")).Return(nil)
 		mockStorage.On("WriteItem", mock.AnythingOfType("*models.SignedPreKey")).Return(errors.New("write error"))
-		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.TableItem")).Return(nil)
+		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.PrimaryKeyProvider")).Return(nil)
 
 		// Act
 		err := keyService.UploadNewPreKeys("123", req)
@@ -216,7 +216,7 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 		mockAccounts.On("GetAccount", TestingAccount.GetID()).Return(TestingAccount, nil)
 		mockStorage.On("WriteItem", mock.AnythingOfType("*models.Account")).Return(nil)
 		mockStorage.On("WriteItem", mock.AnythingOfType("*models.SignedPreKey")).Return(nil)
-		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.TableItem")).Return(errors.New("write error"))
+		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.PrimaryKeyProvider")).Return(errors.New("write error"))
 
 		// Act
 		err := keyService.UploadNewPreKeys("123", req)

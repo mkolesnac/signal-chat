@@ -81,8 +81,8 @@ func (s *MemoryStorage) QueryItems(pk, skPrefix string, queryCondition QueryCond
 
 	// Sort the slice in ascending order by sort keys
 	sort.Slice(sliceValue.Interface(), func(i, j int) bool {
-		itemI := sliceValue.Index(i).Interface().(TableItem)
-		itemJ := sliceValue.Index(j).Interface().(TableItem)
+		itemI := sliceValue.Index(i).Interface().(PrimaryKeyProvider)
+		itemJ := sliceValue.Index(j).Interface().(PrimaryKeyProvider)
 
 		return itemI.GetSortKey() < itemJ.GetSortKey()
 	})
@@ -99,7 +99,7 @@ func (s *MemoryStorage) DeleteItem(pk, sk string) error {
 	return nil
 }
 
-func (s *MemoryStorage) WriteItem(item TableItem) error {
+func (s *MemoryStorage) WriteItem(item PrimaryKeyProvider) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -108,7 +108,7 @@ func (s *MemoryStorage) WriteItem(item TableItem) error {
 	return nil
 }
 
-func (s *MemoryStorage) BatchWriteItems(items []TableItem) error {
+func (s *MemoryStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

@@ -20,3 +20,14 @@ type PreKeyResponse struct {
 type SendMessageResponse struct {
 	MessageID string `json:"messageId"`
 }
+
+type GetMessagesResponse struct {
+	Messages []Message `json:"messages"`
+}
+
+type Message struct {
+	ID         string `json:"id"`
+	SenderID   string `json:"senderID"`
+	CipherText string `json:"cipherText"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+}

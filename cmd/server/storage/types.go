@@ -1,5 +1,7 @@
 package storage
 
+import "strings"
+
 type QueryCondition string
 
 const (
@@ -8,15 +10,25 @@ const (
 	LOWER_THAN   QueryCondition = "pk = :pk AND sk < :skPrefix"
 )
 
-type TableItem interface {
+type TableItem struct {
+	PartitionKey string `dynamodbav:"pk"`
+	SortKey      string `dynamodbav:"sk"`
+	CreatedAt    string `dynamodbav:"createdAt"`
+}
+
+func (t TableItem) GetID() string {
+	return strings.Split(t.SortKey, "#")[1]
+}
+
+type PrimaryKeyProvider interface {
 	GetPartitionKey() string
 	GetSortKey() string
 }
 
-type Provider interface {
+type Backend interface {
 	GetItem(pk, sk string, outPtr any) error
 	QueryItems(pk, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error
 	DeleteItem(pk, sk string) error
-	WriteItem(item TableItem) error
-	BatchWriteItems(items []TableItem) error
+	WriteItem(item PrimaryKeyProvider) error
+	BatchWriteItems(items []PrimaryKeyProvider) error
 }

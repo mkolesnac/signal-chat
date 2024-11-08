@@ -4,9 +4,9 @@ import (
 	"errors"
 	"github.com/labstack/echo/v4"
 	"net/http"
-	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/models"
 	"signal-chat/cmd/server/services"
+	"signal-chat/internal/api"
 	"strconv"
 )
 
@@ -32,7 +32,6 @@ func (h *KeysHandler) GetPreKeyCount(c echo.Context) error {
 	return c.String(http.StatusOK, strconv.Itoa(count))
 }
 
-// uploadNewPreKeys - Uploads new prekeys
 func (h *KeysHandler) UploadNewPreKeys(c echo.Context) error {
 	var req api.UploadPreKeysRequest
 	if err := c.Bind(&req); err != nil {

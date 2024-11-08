@@ -142,7 +142,7 @@ func (s *DynamoDBStorage) DeleteItem(pk, sk string) error {
 }
 
 // WriteItem Function to write an item to DynamoDBStorage
-func (s *DynamoDBStorage) WriteItem(item TableItem) error {
+func (s *DynamoDBStorage) WriteItem(item PrimaryKeyProvider) error {
 	// Marshal the `value` argument into a map of DynamoDBStorage attributes
 	av, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
@@ -168,7 +168,7 @@ func (s *DynamoDBStorage) WriteItem(item TableItem) error {
 	return nil
 }
 
-func (s *DynamoDBStorage) BatchWriteItems(items []TableItem) error {
+func (s *DynamoDBStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
 	const maxBatchSize = 25
 
 	// Split the items into batches of 25 (DynamoDB limit)

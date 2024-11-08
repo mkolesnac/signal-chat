@@ -19,12 +19,12 @@ func (m *MockStorage) DeleteItem(pk, sk string) error {
 	return args.Error(0)
 }
 
-func (m *MockStorage) WriteItem(item storage.TableItem) error {
+func (m *MockStorage) WriteItem(item storage.PrimaryKeyProvider) error {
 	args := m.Called(item)
 	return args.Error(0)
 }
 
-func (m *MockStorage) BatchWriteItems(items []storage.TableItem) error {
+func (m *MockStorage) BatchWriteItems(items []storage.PrimaryKeyProvider) error {
 	args := m.Called(items)
 	return args.Error(0)
 }

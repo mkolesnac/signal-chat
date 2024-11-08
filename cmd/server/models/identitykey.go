@@ -1,16 +1,20 @@
 package models
 
+import "signal-chat/cmd/server/storage"
+
 type IdentityKey struct {
-	PartitionKey string   `dynamodbav:"pk"`
-	SortKey      string   `dynamodbav:"sk"`
-	PublicKey    [32]byte `dynamodbav:"publicKey"`
+	storage.TableItem
+	PublicKey [32]byte `dynamodbav:"publicKey"`
 }
 
 func NewIdentityKey(accountId string, publicKey [32]byte) *IdentityKey {
 	return &IdentityKey{
-		PartitionKey: IdentityKeyPartitionKey(accountId),
-		SortKey:      IdentityKeySortKey(),
-		PublicKey:    publicKey,
+		TableItem: storage.TableItem{
+			PartitionKey: IdentityKeyPartitionKey(accountId),
+			SortKey:      IdentityKeySortKey(),
+			CreatedAt:    getTimestamp(),
+		},
+		PublicKey: publicKey,
 	}
 }
 

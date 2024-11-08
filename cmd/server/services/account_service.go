@@ -3,9 +3,9 @@ package services
 import (
 	"errors"
 	"fmt"
-	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/models"
 	"signal-chat/cmd/server/storage"
+	"signal-chat/internal/api"
 )
 
 type AccountService interface {
@@ -14,10 +14,10 @@ type AccountService interface {
 }
 
 type accountService struct {
-	storage storage.Provider
+	storage storage.Backend
 }
 
-func NewAccountService(storage storage.Provider) AccountService {
+func NewAccountService(storage storage.Backend) AccountService {
 	return &accountService{storage: storage}
 }
 

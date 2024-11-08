@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"math/rand"
-	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/models"
 	"signal-chat/cmd/server/storage"
+	"signal-chat/internal/api"
 )
 
 type KeyService struct {
-	storage  storage.Provider
+	storage  storage.Backend
 	accounts AccountService
 }
 
-func NewKeyService(storage storage.Provider, accounts AccountService) *KeyService {
+func NewKeyService(storage storage.Backend, accounts AccountService) *KeyService {
 	return &KeyService{storage, accounts}
 }
 
@@ -60,7 +60,7 @@ func (s *KeyService) GetPublicKeys(accountID string) (*api.GetPublicKeyResponse,
 	response := &api.GetPublicKeyResponse{
 		IdentityPublicKey: identityKey.PublicKey,
 		SignedPreKey: &api.SignedPreKeyResponse{
-			KeyID:     signedPreKey.ID,
+			KeyID:     signedPreKey.GetID(),
 			PublicKey: signedPreKey.PublicKey,
 			Signature: signedPreKey.Signature,
 		},
@@ -108,7 +108,7 @@ func (s *KeyService) UploadNewPreKeys(accountID string, req api.UploadPreKeysReq
 	}
 
 	// Write one-time prekeys
-	var preKeys []storage.TableItem
+	var preKeys []storage.PrimaryKeyProvider
 	for _, p := range req.PreKeys {
 		preKey := models.NewPreKey(accountID, p.KeyID, [32]byte(p.PublicKey))
 		preKeys = append(preKeys, preKey)

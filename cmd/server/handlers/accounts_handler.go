@@ -4,9 +4,9 @@ import (
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/labstack/echo/v4"
 	"net/http"
-	"signal-chat/cmd/server/api"
 	"signal-chat/cmd/server/auth"
 	"signal-chat/cmd/server/services"
+	"signal-chat/internal/api"
 )
 
 type AccountHandler struct {
@@ -19,7 +19,6 @@ func NewAccountHandler(accounts services.AccountService) *AccountHandler {
 	}
 }
 
-// PUT /account
 func (h *AccountHandler) CreateAccount(c echo.Context) error {
 	var req api.CreateAccountRequest
 	if err := c.Bind(&req); err != nil {

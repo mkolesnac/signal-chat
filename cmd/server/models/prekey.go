@@ -2,20 +2,23 @@ package models
 
 import (
 	"fmt"
+	"signal-chat/cmd/server/storage"
 )
 
 type PreKey struct {
-	PartitionKey string   `dynamodbav:"pk"`
-	SortKey      string   `dynamodbav:"sk"`
-	ID           string   `dynamodbav:"id"`
-	PublicKey    [32]byte `dynamodbav:"publicKey"`
+	storage.TableItem
+	ID        string   `dynamodbav:"id"`
+	PublicKey [32]byte `dynamodbav:"publicKey"`
 }
 
 func NewPreKey(accountId, keyId string, publicKey [32]byte) *PreKey {
 	return &PreKey{
-		PartitionKey: PreKeyPartitionKey(accountId),
-		SortKey:      PreKeySortKey(keyId),
-		PublicKey:    publicKey,
+		TableItem: storage.TableItem{
+			PartitionKey: PreKeyPartitionKey(accountId),
+			SortKey:      PreKeySortKey(keyId),
+			CreatedAt:    getTimestamp(),
+		},
+		PublicKey: publicKey,
 	}
 }
 
