@@ -20,19 +20,30 @@ func NewMessagesHandler(messages services.MessageService) *MessagesHandler {
 	}
 }
 
+func (h *MessagesHandler) RegisterRoutes(g *echo.Group) {
+	g.GET("/messages", h.GetMessages)
+	g.POST("/messages", h.SendMessage)
+}
+
 func (h *MessagesHandler) GetMessages(c echo.Context) error {
 	acc := c.Get("account").(models.Account)
-	fromS := c.QueryParam("from")
-	from, err := strconv.ParseInt(fromS, 10, 64)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "Invalid from parameter")
+	fromParam := c.QueryParam("from")
+	from := int64(0)
+	var err error
+	if fromParam != "" {
+		from, err = strconv.ParseInt(fromParam, 10, 64)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid from parameter")
+		}
 	}
 
 	messages, err := h.messages.GetMessages(acc.GetID(), from)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get messages: "+err.Error())
 	}
-	var respMessages []api.Message
+	// Suppressed warning because we want to return an empty JSON array if messages were found and not nil
+	//goland:noinspection GoPreferNilSlice
+	respMessages := []api.Message{}
 	for _, m := range messages {
 		respMessages = append(respMessages, api.Message{
 			ID:         m.GetID(),
@@ -42,25 +53,23 @@ func (h *MessagesHandler) GetMessages(c echo.Context) error {
 		})
 	}
 
-	resp := api.GetMessagesResponse{Messages: respMessages}
-	return c.JSON(http.StatusOK, resp)
+	res := api.GetMessagesResponse{Messages: respMessages}
+	return c.JSON(http.StatusOK, res)
 }
 
 func (h *MessagesHandler) SendMessage(c echo.Context) error {
 	var req api.SendMessageRequest
 	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
+		return echo.NewHTTPError(http.StatusBadRequest, "Failed to parse request payload")
 	}
 
 	if err := c.Validate(req); err != nil {
-
-		return err
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload: "+err.Error())
 	}
 
 	acc := c.Get("account").(models.Account)
-	recipientID := c.QueryParam("recipient")
 
-	id, err := h.messages.SendMessage(acc.GetID(), recipientID, req)
+	id, err := h.messages.SendMessage(acc.GetID(), req.RecipientID, req)
 	if err != nil {
 		if errors.Is(err, services.ErrAccountNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound, "Recipient account not found")

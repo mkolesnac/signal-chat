@@ -4,7 +4,7 @@ import (
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/labstack/echo/v4"
 	"net/http"
-	"signal-chat/cmd/server/auth"
+	"signal-chat/cmd/server/models"
 	"signal-chat/cmd/server/services"
 	"signal-chat/internal/api"
 )
@@ -17,6 +17,14 @@ func NewAccountHandler(accounts services.AccountService) *AccountHandler {
 	return &AccountHandler{
 		accounts: accounts,
 	}
+}
+
+func (h *AccountHandler) RegisterPublicRoutes(e *echo.Echo) {
+	e.POST("/account", h.CreateAccount)
+}
+
+func (h *AccountHandler) RegisterPrivateRoutes(g *echo.Group) {
+	g.GET("/account", h.GetAccount)
 }
 
 func (h *AccountHandler) CreateAccount(c echo.Context) error {
@@ -35,15 +43,17 @@ func (h *AccountHandler) CreateAccount(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid signed prekey signature")
 	}
 
-	credentials, err := auth.ParseBasicAuthHeader(c)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	err = h.accounts.CreateAccount(credentials.Username, credentials.Password, req)
+	id, err := h.accounts.CreateAccount(req.Name, req.Password, req)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create account")
 	}
 
-	return c.JSON(http.StatusCreated, map[string]string{"message": "Account created successfully"})
+	res := api.CreateAccountResponse{ID: id}
+	return c.JSON(http.StatusCreated, res)
+}
+
+func (h *AccountHandler) GetAccount(c echo.Context) error {
+	acc := c.Get("account").(models.Account)
+	res := api.GetAccountResponse{Name: acc.Name, CreatedAt: acc.CreatedAt}
+	return c.JSON(http.StatusOK, res)
 }

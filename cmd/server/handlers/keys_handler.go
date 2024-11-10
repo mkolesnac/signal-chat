@@ -20,6 +20,12 @@ func NewKeysHandler(keys services.KeyService) *KeysHandler {
 	}
 }
 
+func (h *KeysHandler) RegisterRoutes(g *echo.Group) {
+	g.GET("/keys", h.GetPublicKeys)
+	g.GET("/keys/count", h.GetPreKeyCount)
+	g.POST("/keys", h.UploadNewPreKeys)
+}
+
 // GetPreKeyCount get - Get prekey count
 func (h *KeysHandler) GetPreKeyCount(c echo.Context) error {
 	acc := c.Get("account").(models.Account)

@@ -28,8 +28,12 @@ func NewWebsocketHandler(websockets services.WebsocketManager) *WebsocketHandler
 	}
 }
 
+func (h *WebsocketHandler) RegisterRoutes(g *echo.Group) {
+	g.GET("/ws/:id", h.Upgrade)
+}
+
 func (h *WebsocketHandler) Upgrade(c echo.Context) error {
-	accId := c.QueryParam("id")
+	accId := c.Param("id")
 
 	// Upgrade the HTTP connection to a WebSocket connection
 	conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
