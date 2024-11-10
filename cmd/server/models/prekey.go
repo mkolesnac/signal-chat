@@ -7,7 +7,6 @@ import (
 
 type PreKey struct {
 	storage.TableItem
-	ID        string   `dynamodbav:"id"`
 	PublicKey [32]byte `dynamodbav:"publicKey"`
 }
 
@@ -35,5 +34,5 @@ func PreKeyPartitionKey(accountId string) string {
 }
 
 func PreKeySortKey(keyId string) string {
-	return fmt.Sprintf("signedPreKey#%s", keyId)
+	return fmt.Sprintf("preKey#%s", keyId)
 }
