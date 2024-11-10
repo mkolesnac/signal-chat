@@ -10,9 +10,9 @@ type MockAccountService struct {
 	mock.Mock
 }
 
-func (m *MockAccountService) CreateAccount(id, pwd string, req api.CreateAccountRequest) error {
-	args := m.Called(id, pwd, req)
-	return args.Error(0)
+func (m *MockAccountService) CreateAccount(name, pwd string, req api.CreateAccountRequest) (string, error) {
+	args := m.Called(name, pwd, req)
+	return args.String(0), args.Error(1)
 }
 
 func (m *MockAccountService) GetAccount(id string) (*models.Account, error) {

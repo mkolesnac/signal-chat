@@ -26,9 +26,10 @@ func TestAccountService_CreateAccount(t *testing.T) {
 		mockStorage.On("WriteItem", mock.AnythingOfType("*models.SignedPreKey")).Return(nil)
 
 		// Act
-		err := service.CreateAccount("123", "test", req)
+		id, err := service.CreateAccount("Test", "test", req)
 
 		// Assert
+		assert.NotEmpty(t, id)
 		assert.NoError(t, err)
 		mockStorage.AssertExpectations(t)
 	})
@@ -41,9 +42,10 @@ func TestAccountService_CreateAccount(t *testing.T) {
 		mockStorage.On("WriteItem", mock.Anything).Return(nil)
 
 		// Act
-		err := service.CreateAccount("123", "test", req)
+		id, err := service.CreateAccount("Test", "test", req)
 
 		// Assert
+		assert.Empty(t, id)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to write account")
 	})
@@ -56,9 +58,10 @@ func TestAccountService_CreateAccount(t *testing.T) {
 		mockStorage.On("WriteItem", mock.Anything).Return(nil)
 
 		// Act
-		err := service.CreateAccount("123", "test", req)
+		id, err := service.CreateAccount("Test", "test", req)
 
 		// Assert
+		assert.Empty(t, id)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to write identity key")
 	})
@@ -71,9 +74,10 @@ func TestAccountService_CreateAccount(t *testing.T) {
 		mockStorage.On("WriteItem", mock.Anything).Return(nil)
 
 		// Act
-		err := service.CreateAccount("123", "test", req)
+		id, err := service.CreateAccount("Test", "test", req)
 
 		// Assert
+		assert.Empty(t, id)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to write signed pre key")
 	})
