@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"strings"
 	"time"
 )
 
@@ -92,16 +93,18 @@ func (s *DynamoDBStorage) QueryBySortKeyPrefix(pk, skPrefix string, outSlicePtr 
 }
 
 // QueryItems queries items from DynamoDB by sort key prefix
-func (s *DynamoDBStorage) QueryItems(pk, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error {
+func (s *DynamoDBStorage) QueryItems(pk, sk string, queryCondition QueryCondition, outSlicePtr any) error {
 	panicIfNotSlicePointer(outSlicePtr)
 	panicIfInvalidQueryCondition(queryCondition)
 
 	// Prepare the query input
+	skPrefix := fmt.Sprintf("%v#", strings.Split(sk, "#")[0])
 	input := &dynamodb.QueryInput{
 		TableName:              aws.String(tableName),
 		KeyConditionExpression: aws.String(string(queryCondition)),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":pk":       {S: aws.String(pk)},
+			":sk":       {S: aws.String(sk)},
 			":skPrefix": {S: aws.String(skPrefix)},
 		},
 	}
@@ -143,6 +146,8 @@ func (s *DynamoDBStorage) DeleteItem(pk, sk string) error {
 
 // WriteItem Function to write an item to DynamoDBStorage
 func (s *DynamoDBStorage) WriteItem(item PrimaryKeyProvider) error {
+	panicIfNotPointer(item)
+
 	// Marshal the `value` argument into a map of DynamoDBStorage attributes
 	av, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
@@ -170,6 +175,10 @@ func (s *DynamoDBStorage) WriteItem(item PrimaryKeyProvider) error {
 
 func (s *DynamoDBStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
 	const maxBatchSize = 25
+
+	for _, item := range items {
+		panicIfNotPointer(item)
+	}
 
 	// Split the items into batches of 25 (DynamoDB limit)
 	for i := 0; i < len(items); i += maxBatchSize {

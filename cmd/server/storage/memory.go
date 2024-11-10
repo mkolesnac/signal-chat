@@ -33,16 +33,16 @@ func (s *MemoryStorage) GetItem(pk, sk string, outPtr any) error {
 	// Set the item of `outPtr` to the item retrieved from the map
 	outValue := reflect.ValueOf(outPtr)
 	itemValue := reflect.ValueOf(item)
-	if !itemValue.Type().AssignableTo(outValue.Elem().Type()) {
+	if !itemValue.Type().AssignableTo(outValue.Type()) {
 		panic("type mismatch: cannot assign item to outPtr parameter")
 	}
 
-	outValue.Elem().Set(itemValue)
+	outValue.Elem().Set(itemValue.Elem())
 
 	return nil
 }
 
-func (s *MemoryStorage) QueryItems(pk, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error {
+func (s *MemoryStorage) QueryItems(pk, sk string, queryCondition QueryCondition, outSlicePtr any) error {
 	panicIfNotSlicePointer(outSlicePtr)
 	panicIfInvalidQueryCondition(queryCondition)
 
@@ -55,26 +55,27 @@ func (s *MemoryStorage) QueryItems(pk, skPrefix string, queryCondition QueryCond
 	sliceValue := outValue.Elem()
 
 	// Create a function that will evaluate sort key matches based on the specified query condition
+	skPrefix := fmt.Sprintf("%v#", strings.Split(sk, "#")[0])
 	type FilterFunc = func(sk string) bool
 	var filter FilterFunc
 	if queryCondition == BEGINS_WITH {
-		filter = func(sk string) bool {
-			return strings.HasPrefix(sk, skPrefix)
+		filter = func(key string) bool {
+			return strings.HasPrefix(key, skPrefix)
 		}
 	} else if queryCondition == GREATER_THAN {
-		filter = func(sk string) bool {
-			return sk > skPrefix
+		filter = func(key string) bool {
+			return strings.HasPrefix(key, skPrefix) && key > sk
 		}
 	} else if queryCondition == LOWER_THAN {
-		filter = func(sk string) bool {
-			return sk < skPrefix
+		filter = func(key string) bool {
+			return strings.HasPrefix(key, skPrefix) && key < sk
 		}
 	}
 
 	for k, v := range s.data {
 		parts := strings.Split(k, ":")
 		if pk == parts[0] && filter(parts[1]) {
-			item := reflect.ValueOf(v)
+			item := reflect.ValueOf(v).Elem()
 			sliceValue.Set(reflect.Append(sliceValue, item))
 		}
 	}
@@ -100,6 +101,8 @@ func (s *MemoryStorage) DeleteItem(pk, sk string) error {
 }
 
 func (s *MemoryStorage) WriteItem(item PrimaryKeyProvider) error {
+	panicIfNotPointer(item)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -109,6 +112,10 @@ func (s *MemoryStorage) WriteItem(item PrimaryKeyProvider) error {
 }
 
 func (s *MemoryStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
+	for _, item := range items {
+		panicIfNotPointer(item)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

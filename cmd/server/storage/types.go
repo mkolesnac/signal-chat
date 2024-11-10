@@ -6,8 +6,8 @@ type QueryCondition string
 
 const (
 	BEGINS_WITH  QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix)"
-	GREATER_THAN QueryCondition = "pk = :pk AND sk > :skPrefix"
-	LOWER_THAN   QueryCondition = "pk = :pk AND sk < :skPrefix"
+	GREATER_THAN QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix) AND sk > :sk"
+	LOWER_THAN   QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix) AND sk < :sk"
 )
 
 type TableItem struct {
