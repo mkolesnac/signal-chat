@@ -9,16 +9,23 @@ import (
 	"signal-chat/internal/api"
 )
 
-type KeyService struct {
+type KeyService interface {
+	GetPreKeyCount(accountID string) (int, error)
+	GetPublicKeys(accountID string) (*api.GetPublicKeyResponse, error)
+	UploadNewPreKeys(accountID string, req api.UploadPreKeysRequest) error
+	VerifySignature(accountID string, signedPublicKey, signature []byte) (bool, error)
+}
+
+type keyService struct {
 	storage  storage.Backend
 	accounts AccountService
 }
 
-func NewKeyService(storage storage.Backend, accounts AccountService) *KeyService {
-	return &KeyService{storage, accounts}
+func NewKeyService(storage storage.Backend, accounts AccountService) KeyService {
+	return &keyService{storage, accounts}
 }
 
-func (s *KeyService) GetPreKeyCount(accountID string) (int, error) {
+func (s *keyService) GetPreKeyCount(accountID string) (int, error) {
 	pk := models.PreKeyPartitionKey(accountID)
 	skPrefix := models.PreKeySortKey("")
 	var items []models.PreKey
@@ -29,7 +36,7 @@ func (s *KeyService) GetPreKeyCount(accountID string) (int, error) {
 	return len(items), nil
 }
 
-func (s *KeyService) GetPublicKeys(accountID string) (*api.GetPublicKeyResponse, error) {
+func (s *keyService) GetPublicKeys(accountID string) (*api.GetPublicKeyResponse, error) {
 	// Retrieve account model
 	acc, err := s.accounts.GetAccount(accountID)
 	if err != nil {
@@ -76,7 +83,7 @@ func (s *KeyService) GetPublicKeys(accountID string) (*api.GetPublicKeyResponse,
 	index := rand.Intn(count)
 	preKey := preKeys[index]
 	response.PreKey = &api.PreKeyResponse{
-		KeyID:     preKey.ID,
+		KeyID:     preKey.GetID(),
 		PublicKey: preKey.PublicKey,
 	}
 
@@ -89,7 +96,7 @@ func (s *KeyService) GetPublicKeys(accountID string) (*api.GetPublicKeyResponse,
 	return response, nil
 }
 
-func (s *KeyService) UploadNewPreKeys(accountID string, req api.UploadPreKeysRequest) error {
+func (s *keyService) UploadNewPreKeys(accountID string, req api.UploadPreKeysRequest) error {
 	// Retrieve account model
 	acc, err := s.accounts.GetAccount(accountID)
 	if err != nil {
@@ -121,7 +128,7 @@ func (s *KeyService) UploadNewPreKeys(accountID string, req api.UploadPreKeysReq
 	return nil
 }
 
-func (s *KeyService) VerifySignature(accountID string, signedPublicKey, signature []byte) (bool, error) {
+func (s *keyService) VerifySignature(accountID string, signedPublicKey, signature []byte) (bool, error) {
 	pk := models.IdentityKeyPartitionKey(accountID)
 	sk := models.IdentityKeySortKey()
 	var identityKey models.IdentityKey

@@ -1,5 +1,14 @@
 package api
 
+type CreateAccountResponse struct {
+	ID string `json:"id"`
+}
+
+type GetAccountResponse struct {
+	Name      string `json:"name"`
+	CreatedAt string `json:"createdAt"`
+}
+
 type GetPublicKeyResponse struct {
 	IdentityPublicKey [32]byte              `json:"identityPublicKey"`
 	SignedPreKey      *SignedPreKeyResponse `json:"signedPreKey"`

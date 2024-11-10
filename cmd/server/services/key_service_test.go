@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -13,9 +14,27 @@ import (
 
 func TestKeyService_GetPreKeyCount(t *testing.T) {
 	t.Run("when prekeys are found", func(t *testing.T) {
+
+		req := api.CreateAccountRequest{
+			Name:              "Test",
+			Password:          "password",
+			IdentityPublicKey: TestingIdentityKey.PublicKey[:],
+			SignedPreKey: api.SignedPreKeyRequest{
+				KeyID:     "1",
+				PublicKey: TestingSignedPreKey.PublicKey[:],
+				Signature: TestingSignedPreKey.Signature[:],
+			},
+		}
+		jsonData, err := json.MarshalIndent(req, "", "  ")
+		jsonString := string(jsonData)
+		_ = jsonString
+
 		mockStorage := new(mocks.MockStorage)
 		keyService := NewKeyService(mockStorage, new(mocks.MockAccountService))
-		preKeys := []models.PreKey{{ID: "1"}, {ID: "2"}}
+		preKeys := []models.PreKey{
+			*models.NewPreKey("123", "1", [32]byte{}),
+			*models.NewPreKey("123", "2", [32]byte{}),
+		}
 		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.BEGINS_WITH, mock.Anything).
 			Run(func(args mock.Arguments) {
 				*args.Get(3).(*[]models.PreKey) = preKeys
@@ -52,11 +71,11 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 		mockAccounts := new(mocks.MockAccountService)
 		keyService := NewKeyService(mockStorage, mockAccounts)
 		mockAccounts.On("GetAccount", TestingAccount.GetID()).Return(TestingAccount, nil)
-		mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
+		mockStorage.On("GetItem", TestingIdentityKey.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
 			Run(func(args mock.Arguments) {
 				*args.Get(2).(*models.IdentityKey) = *TestingIdentityKey
 			}).Return(nil)
-		mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingSignedPreKey.SortKey, mock.AnythingOfType("*models.SignedPreKey")).
+		mockStorage.On("GetItem", TestingSignedPreKey.PartitionKey, TestingSignedPreKey.SortKey, mock.AnythingOfType("*models.SignedPreKey")).
 			Run(func(args mock.Arguments) {
 				*args.Get(2).(*models.SignedPreKey) = *TestingSignedPreKey
 			}).Return(nil)
@@ -64,7 +83,7 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				*args.Get(3).(*[]models.PreKey) = []models.PreKey{*TestingPreKey1}
 			}).Return(nil)
-		mockStorage.On("DeleteItem", TestingAccount.PartitionKey, TestingPreKey1.SortKey).Return(nil)
+		mockStorage.On("DeleteItem", TestingPreKey1.PartitionKey, TestingPreKey1.SortKey).Return(nil)
 
 		// Act
 		response, err := keyService.GetPublicKeys(TestingAccount.GetID())
@@ -75,8 +94,8 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 		assert.Equal(t, TestingIdentityKey.PublicKey, response.IdentityPublicKey)
 		assert.Equal(t, TestingSignedPreKey.GetID(), response.SignedPreKey.KeyID)
 		assert.Equal(t, TestingSignedPreKey.PublicKey, response.SignedPreKey.PublicKey)
-		assert.Equal(t, TestingSignedPreKey.GetID(), response.PreKey.KeyID)
-		assert.Equal(t, TestingSignedPreKey.PublicKey, response.PreKey.PublicKey)
+		assert.Equal(t, TestingPreKey1.GetID(), response.PreKey.KeyID)
+		assert.Equal(t, TestingPreKey1.PublicKey, response.PreKey.PublicKey)
 		mockStorage.AssertExpectations(t)
 	})
 	t.Run("returns response without prekeys when no prekeys found", func(t *testing.T) {
@@ -85,11 +104,11 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 		mockAccounts := new(mocks.MockAccountService)
 		keyService := NewKeyService(mockStorage, mockAccounts)
 		mockAccounts.On("GetAccount", TestingAccount.GetID()).Return(TestingAccount, nil)
-		mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
+		mockStorage.On("GetItem", TestingIdentityKey.PartitionKey, TestingIdentityKey.SortKey, mock.AnythingOfType("*models.IdentityKey")).
 			Run(func(args mock.Arguments) {
 				*args.Get(2).(*models.IdentityKey) = *TestingIdentityKey
 			}).Return(nil)
-		mockStorage.On("GetItem", TestingAccount.PartitionKey, TestingSignedPreKey.SortKey, mock.AnythingOfType("*models.SignedPreKey")).
+		mockStorage.On("GetItem", TestingSignedPreKey.PartitionKey, TestingSignedPreKey.SortKey, mock.AnythingOfType("*models.SignedPreKey")).
 			Run(func(args mock.Arguments) {
 				*args.Get(2).(*models.SignedPreKey) = *TestingSignedPreKey
 			}).Return(nil)
@@ -164,8 +183,8 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 	req := api.UploadPreKeysRequest{
 		SignedPreKey: api.SignedPreKeyRequest{KeyID: TestingSignedPreKey.GetID(), PublicKey: TestingSignedPreKey.PublicKey[:], Signature: TestingSignedPreKey.Signature[:]},
 		PreKeys: []api.PreKeyRequest{
-			{KeyID: TestingPreKey1.ID, PublicKey: TestingPreKey1.PublicKey[:]},
-			{KeyID: TestingPreKey2.ID, PublicKey: TestingPreKey2.PublicKey[:]},
+			{KeyID: TestingPreKey1.GetID(), PublicKey: TestingPreKey1.PublicKey[:]},
+			{KeyID: TestingPreKey2.GetID(), PublicKey: TestingPreKey2.PublicKey[:]},
 		},
 	}
 
@@ -185,7 +204,7 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.PrimaryKeyProvider")).Return(nil)
 
 		// Act
-		err := keyService.UploadNewPreKeys("123", req)
+		err := keyService.UploadNewPreKeys(TestingAccount.GetID(), req)
 
 		// Assert
 		assert.NoError(t, err)
@@ -202,7 +221,7 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.PrimaryKeyProvider")).Return(nil)
 
 		// Act
-		err := keyService.UploadNewPreKeys("123", req)
+		err := keyService.UploadNewPreKeys(TestingAccount.GetID(), req)
 
 		// Assert
 		assert.Error(t, err)
@@ -219,7 +238,7 @@ func TestKeyService_UploadNewPreKeys(t *testing.T) {
 		mockStorage.On("BatchWriteItems", mock.AnythingOfType("[]storage.PrimaryKeyProvider")).Return(errors.New("write error"))
 
 		// Act
-		err := keyService.UploadNewPreKeys("123", req)
+		err := keyService.UploadNewPreKeys(TestingAccount.GetID(), req)
 
 		// Assert
 		assert.Error(t, err)
