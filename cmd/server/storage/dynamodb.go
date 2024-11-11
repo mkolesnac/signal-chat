@@ -63,38 +63,8 @@ func (s *DynamoDBStorage) GetItem(pk, sk string, outPtr any) error {
 	return nil
 }
 
-// QueryBySortKeyPrefix queries items from DynamoDB by sort key prefix
-func (s *DynamoDBStorage) QueryBySortKeyPrefix(pk, skPrefix string, outSlicePtr any) error {
-	panicIfNotSlicePointer(outSlicePtr)
-
-	// Prepare the query input
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(tableName),
-		KeyConditionExpression: aws.String("pk = :pk AND begins_with(sk, :sk)"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":pk": {S: aws.String(pk)},
-			":sk": {S: aws.String(skPrefix)},
-		},
-	}
-
-	// Perform the query operation
-	result, err := s.svc.Query(input)
-	if err != nil {
-		return fmt.Errorf("failed to query items: %w", err)
-	}
-
-	// Unmarshal the result into supplied argument
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, outSlicePtr)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal query result: %w", err)
-	}
-
-	return nil
-}
-
 // QueryItems queries items from DynamoDB by sort key prefix
 func (s *DynamoDBStorage) QueryItems(pk, sk string, queryCondition QueryCondition, outSlicePtr any) error {
-	panicIfNotSlicePointer(outSlicePtr)
 	panicIfInvalidQueryCondition(queryCondition)
 
 	// Prepare the query input
@@ -109,19 +79,27 @@ func (s *DynamoDBStorage) QueryItems(pk, sk string, queryCondition QueryConditio
 		},
 	}
 
-	// Perform the query operation
-	result, err := s.svc.Query(input)
-	if err != nil {
-		return fmt.Errorf("failed to query items: %w", err)
+	return s.runDynamoQuery(input, outSlicePtr)
+}
+
+func (s *DynamoDBStorage) QueryItemsBySenderID(senderID, sk string, queryCondition QueryCondition, outSlicePtr any) error {
+	panicIfInvalidQueryCondition(queryCondition)
+
+	// Prepare the query input
+	skPrefix := fmt.Sprintf("%v#", strings.Split(sk, "#")[0])
+	indexName := "bySenderId"
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(tableName),
+		IndexName:              &indexName,
+		KeyConditionExpression: aws.String(string(queryCondition)),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":pk":       {S: aws.String(senderID)},
+			":sk":       {S: aws.String(sk)},
+			":skPrefix": {S: aws.String(skPrefix)},
+		},
 	}
 
-	// Unmarshal the result into supplied argument
-	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, outSlicePtr)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal query result: %w", err)
-	}
-
-	return nil
+	return s.runDynamoQuery(input, outSlicePtr)
 }
 
 // DeleteItem deletes an item from DynamoDB using the partition key and sort key
@@ -212,7 +190,7 @@ func (s *DynamoDBStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
 		}
 
 		// Perform the batch write
-		err := executeBatchWriteWithRetry(s.svc, input)
+		err := s.executeBatchWriteWithRetry(input)
 		if err != nil {
 			return fmt.Errorf("batch write failed: %v", err)
 		}
@@ -222,10 +200,10 @@ func (s *DynamoDBStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
 }
 
 // executeBatchWriteWithRetry executes a Item operation and retries if there are unprocessed items
-func executeBatchWriteWithRetry(svc *dynamodb.DynamoDB, input *dynamodb.BatchWriteItemInput) error {
+func (s *DynamoDBStorage) executeBatchWriteWithRetry(input *dynamodb.BatchWriteItemInput) error {
 	for {
 		// Perform the batch write operation
-		result, err := svc.BatchWriteItem(input)
+		result, err := s.svc.BatchWriteItem(input)
 		if err != nil {
 			return fmt.Errorf("failed to batch write items: %v", err)
 		}
@@ -239,4 +217,22 @@ func executeBatchWriteWithRetry(svc *dynamodb.DynamoDB, input *dynamodb.BatchWri
 		input.RequestItems = result.UnprocessedItems
 		time.Sleep(1 * time.Second) // Backoff before retrying
 	}
+}
+
+func (s *DynamoDBStorage) runDynamoQuery(input *dynamodb.QueryInput, outSlicePtr any) error {
+	panicIfNotSlicePointer(outSlicePtr)
+
+	// Perform the query operation
+	result, err := s.svc.Query(input)
+	if err != nil {
+		return fmt.Errorf("failed to query items: %w", err)
+	}
+
+	// Unmarshal the result into supplied argument
+	err = dynamodbattribute.UnmarshalListOfMaps(result.Items, outSlicePtr)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal query result: %w", err)
+	}
+
+	return nil
 }

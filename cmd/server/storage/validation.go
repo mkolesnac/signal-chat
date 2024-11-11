@@ -27,7 +27,7 @@ func panicIfNotSlicePointer(outSlicePtr any) {
 }
 
 func panicIfInvalidQueryCondition(condition QueryCondition) {
-	if condition != BEGINS_WITH && condition != GREATER_THAN && condition != LOWER_THAN {
+	if condition != QUERY_BEGINS_WITH && condition != QUERY_GREATER_THAN && condition != QUERY_LOWER_THAN {
 		panic("invalid query condition")
 	}
 }

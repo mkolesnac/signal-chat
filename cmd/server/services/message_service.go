@@ -8,7 +8,7 @@ import (
 )
 
 type MessageService interface {
-	GetMessages(accountID string, from int64) ([]models.Message, error)
+	GetMessages(accountID string, since int64, senderID string) ([]models.Message, error)
 	SendMessage(accountID, recipientID string, req api.SendMessageRequest) (string, error)
 }
 
@@ -22,11 +22,16 @@ func NewMessageService(storage storage.Backend, accounts AccountService, websock
 	return &messageService{storage, accounts, websockets}
 }
 
-func (s *messageService) GetMessages(accountID string, from int64) ([]models.Message, error) {
+func (s *messageService) GetMessages(accountID string, from int64, senderID string) ([]models.Message, error) {
 	var messages []models.Message
 	pk := models.MessagePartitionKey(accountID)
 	sk := models.MessageSortKey(from)
-	err := s.storage.QueryItems(pk, sk, storage.GREATER_THAN, &messages)
+	var err error
+	if senderID == "" {
+		err = s.storage.QueryItems(pk, sk, storage.QUERY_GREATER_THAN, &messages)
+	} else {
+		err = s.storage.QueryItemsBySenderID(senderID, sk, storage.QUERY_GREATER_THAN, &messages)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to query messages: %w", err)
 	}

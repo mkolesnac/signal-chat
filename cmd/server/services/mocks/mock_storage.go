@@ -33,3 +33,8 @@ func (m *MockStorage) QueryItems(pk, skPrefix string, queryCondition storage.Que
 	args := m.Called(pk, skPrefix, queryCondition, out)
 	return args.Error(0)
 }
+
+func (m *MockStorage) QueryItemsBySenderID(senderID, skPrefix string, queryCondition storage.QueryCondition, out interface{}) error {
+	args := m.Called(senderID, skPrefix, queryCondition, out)
+	return args.Error(0)
+}

@@ -5,9 +5,13 @@ import "strings"
 type QueryCondition string
 
 const (
-	BEGINS_WITH  QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix)"
-	GREATER_THAN QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix) AND sk > :sk"
-	LOWER_THAN   QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix) AND sk < :sk"
+	QUERY_BEGINS_WITH  QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix)"
+	QUERY_GREATER_THAN QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix) AND sk > :sk"
+	QUERY_LOWER_THAN   QueryCondition = "pk = :pk AND begins_with(sk, :skPrefix) AND sk < :sk"
+)
+
+var (
+	IndexBySenderId string = "bySenderId"
 )
 
 type TableItem struct {
@@ -28,6 +32,7 @@ type PrimaryKeyProvider interface {
 type Backend interface {
 	GetItem(pk, sk string, outPtr any) error
 	QueryItems(pk, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error
+	QueryItemsBySenderID(senderID, skPrefix string, queryCondition QueryCondition, outSlicePtr any) error
 	DeleteItem(pk, sk string) error
 	WriteItem(item PrimaryKeyProvider) error
 	BatchWriteItems(items []PrimaryKeyProvider) error

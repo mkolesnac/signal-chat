@@ -29,7 +29,7 @@ func (s *keyService) GetPreKeyCount(accountID string) (int, error) {
 	pk := models.PreKeyPartitionKey(accountID)
 	skPrefix := models.PreKeySortKey("")
 	var items []models.PreKey
-	err := s.storage.QueryItems(pk, skPrefix, storage.BEGINS_WITH, &items)
+	err := s.storage.QueryItems(pk, skPrefix, storage.QUERY_BEGINS_WITH, &items)
 	if err != nil {
 		return 0, fmt.Errorf("error getting pre key count: %w", err)
 	}
@@ -59,7 +59,7 @@ func (s *keyService) GetPublicKeys(accountID string) (*api.GetPublicKeyResponse,
 
 	// Filter out pre key items
 	var preKeys []models.PreKey
-	err = s.storage.QueryItems(acc.PartitionKey, models.PreKeySortKey(""), storage.BEGINS_WITH, &preKeys)
+	err = s.storage.QueryItems(acc.PartitionKey, models.PreKeySortKey(""), storage.QUERY_BEGINS_WITH, &preKeys)
 	if err != nil {
 		return nil, fmt.Errorf("error getting pre keys: %w", err)
 	}

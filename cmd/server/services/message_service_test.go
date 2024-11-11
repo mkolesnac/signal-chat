@@ -23,21 +23,21 @@ var TestMessage2 = models.Message{
 }
 
 func TestMessageService_GetMessages(t *testing.T) {
-	t.Run("returns messages newer than given timestamp", func(t *testing.T) {
+	t.Run("when since timestamp", func(t *testing.T) {
 		// Arrange
 		mockStorage := new(mocks.MockStorage)
 		mockAccounts := new(mocks.MockAccountService)
 		mockWebsockets := new(mocks.MockWebsocketManager)
 		service := NewMessageService(mockStorage, mockAccounts, mockWebsockets)
 		// setup mocks
-		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.GREATER_THAN, mock.Anything).
+		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.QUERY_GREATER_THAN, mock.Anything).
 			Run(func(args mock.Arguments) {
 				*args.Get(3).(*[]models.Message) = []models.Message{TestMessage1, TestMessage2}
 			}).
 			Return(nil)
 
 		// Act
-		messages, err := service.GetMessages("acc1", 1)
+		messages, err := service.GetMessages("acc1", 1, "")
 
 		// Assert
 		assert.NoError(t, err)

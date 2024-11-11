@@ -35,7 +35,7 @@ func TestKeyService_GetPreKeyCount(t *testing.T) {
 			*models.NewPreKey("123", "1", [32]byte{}),
 			*models.NewPreKey("123", "2", [32]byte{}),
 		}
-		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.BEGINS_WITH, mock.Anything).
+		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.QUERY_BEGINS_WITH, mock.Anything).
 			Run(func(args mock.Arguments) {
 				*args.Get(3).(*[]models.PreKey) = preKeys
 			}).
@@ -52,7 +52,7 @@ func TestKeyService_GetPreKeyCount(t *testing.T) {
 		// Arrange
 		mockStorage := new(mocks.MockStorage)
 		keyService := NewKeyService(mockStorage, new(mocks.MockAccountService))
-		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.BEGINS_WITH, mock.Anything).
+		mockStorage.On("QueryItems", mock.Anything, mock.Anything, storage.QUERY_BEGINS_WITH, mock.Anything).
 			Return(errors.New("query error"))
 
 		// Act
@@ -79,7 +79,7 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				*args.Get(2).(*models.SignedPreKey) = *TestingSignedPreKey
 			}).Return(nil)
-		mockStorage.On("QueryItems", TestingAccount.PartitionKey, models.PreKeySortKey(""), storage.BEGINS_WITH, mock.AnythingOfType("*[]models.PreKey")).
+		mockStorage.On("QueryItems", TestingAccount.PartitionKey, models.PreKeySortKey(""), storage.QUERY_BEGINS_WITH, mock.AnythingOfType("*[]models.PreKey")).
 			Run(func(args mock.Arguments) {
 				*args.Get(3).(*[]models.PreKey) = []models.PreKey{*TestingPreKey1}
 			}).Return(nil)
@@ -112,7 +112,7 @@ func TestKeyService_GetPublicKeys(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				*args.Get(2).(*models.SignedPreKey) = *TestingSignedPreKey
 			}).Return(nil)
-		mockStorage.On("QueryItems", TestingAccount.PartitionKey, models.PreKeySortKey(""), storage.BEGINS_WITH, mock.AnythingOfType("*[]models.PreKey")).Return(nil)
+		mockStorage.On("QueryItems", TestingAccount.PartitionKey, models.PreKeySortKey(""), storage.QUERY_BEGINS_WITH, mock.AnythingOfType("*[]models.PreKey")).Return(nil)
 
 		// Act
 		response, err := keyService.GetPublicKeys(TestingAccount.GetID())

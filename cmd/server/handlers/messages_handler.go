@@ -27,17 +27,19 @@ func (h *MessagesHandler) RegisterRoutes(g *echo.Group) {
 
 func (h *MessagesHandler) GetMessages(c echo.Context) error {
 	acc := c.Get("account").(models.Account)
-	fromParam := c.QueryParam("from")
-	from := int64(0)
+	sinceParam := c.QueryParam("since")
+	since := int64(0)
 	var err error
-	if fromParam != "" {
-		from, err = strconv.ParseInt(fromParam, 10, 64)
+	if sinceParam != "" {
+		since, err = strconv.ParseInt(sinceParam, 10, 64)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "Invalid from parameter")
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid since parameter")
 		}
 	}
 
-	messages, err := h.messages.GetMessages(acc.GetID(), from)
+	senderParam := c.QueryParam("sender")
+
+	messages, err := h.messages.GetMessages(acc.GetID(), since, senderParam)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get messages: "+err.Error())
 	}
