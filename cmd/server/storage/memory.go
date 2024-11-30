@@ -8,144 +8,31 @@ import (
 	"sync"
 )
 
-type MemoryStorage struct {
-	table      map[string]any
-	bySenderID map[string]any
-	mu         sync.RWMutex
+type MemoryStore struct {
+	items map[string]Resource
+	mu    sync.RWMutex
 }
 
-func NewMemoryStorage() *MemoryStorage {
-	return &MemoryStorage{
-		table:      make(map[string]any),
-		bySenderID: make(map[string]any),
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{
+		items: make(map[string]Resource),
 	}
 }
 
-func (s *MemoryStorage) GetItem(pk, sk string, outPtr any) error {
-	panicIfNotPointer(outPtr)
-
+func (s *MemoryStore) GetItem(pk, sk string) (Resource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	key := getPrimaryKey(pk, sk)
-	item, ok := s.table[key]
+	item, ok := s.items[key]
 	if !ok {
-		return ErrNotFound
-	}
-	// Set the item of `outPtr` to the item retrieved from the map
-	outValue := reflect.ValueOf(outPtr)
-	itemValue := reflect.ValueOf(item)
-	if !itemValue.Type().AssignableTo(outValue.Type()) {
-		panic("type mismatch: cannot assign item to outPtr parameter")
+		return Resource{}, ErrNotFound
 	}
 
-	outValue.Elem().Set(itemValue.Elem())
-
-	return nil
+	return item, nil
 }
 
-func (s *MemoryStorage) QueryItems(pk, sk string, queryCondition QueryCondition, outSlicePtr any) error {
-	return s.runMemoryQuery(pk, sk, queryCondition, outSlicePtr, s.table)
-}
-
-func (s *MemoryStorage) QueryItemsBySenderID(senderID, sk string, queryCondition QueryCondition, outSlicePtr any) error {
-	return s.runMemoryQuery(senderID, sk, queryCondition, outSlicePtr, s.bySenderID)
-}
-
-func (s *MemoryStorage) DeleteItem(pk, sk string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	key := getPrimaryKey(pk, sk)
-	item, ok := s.table[key]
-	if !ok {
-		return nil
-	}
-
-	delete(s.table, key)
-	if senderID, ok := getSenderID(item); ok {
-		indexKey := getPrimaryKey(senderID, sk)
-		delete(s.bySenderID, indexKey)
-	}
-
-	return nil
-}
-
-func (s *MemoryStorage) WriteItem(item PrimaryKeyProvider) error {
-	panicIfNotPointer(item)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	key := getPrimaryKey(item.GetPartitionKey(), item.GetSortKey())
-	s.table[key] = item
-
-	if senderID, ok := getSenderID(item); ok {
-		indexKey := getPrimaryKey(senderID, item.GetSortKey())
-		s.bySenderID[indexKey] = item
-	}
-	return nil
-}
-
-func (s *MemoryStorage) BatchWriteItems(items []PrimaryKeyProvider) error {
-	for _, item := range items {
-		panicIfNotPointer(item)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, item := range items {
-		key := getPrimaryKey(item.GetPartitionKey(), item.GetSortKey())
-		s.table[key] = item
-
-		if senderID, ok := getSenderID(item); ok {
-			indexKey := getPrimaryKey(senderID, item.GetSortKey())
-			s.bySenderID[indexKey] = item
-		}
-	}
-
-	return nil
-}
-
-func getPrimaryKey(pk, sk string) string {
-	return fmt.Sprintf("%s:%s", pk, sk)
-}
-
-func getSenderID(input interface{}) (string, bool) {
-	val := reflect.ValueOf(input)
-
-	// Check if the input is a struct or a pointer to a struct
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem() // Dereference the pointer
-	}
-	if val.Kind() != reflect.Struct {
-		return "", false // Not a struct, return false
-	}
-
-	// Check if the struct has a field named "SenderID"
-	field := val.FieldByName("SenderID")
-	if !field.IsValid() {
-		return "", false // Field does not exist
-	}
-
-	// Check if the field is a string
-	if field.Kind() == reflect.String {
-		value := field.String()
-		if value == "" {
-			return "", false
-		}
-
-		return value, true
-	}
-
-	return "", false // Field exists but is not a string
-}
-
-func (s *MemoryStorage) runMemoryQuery(pk, sk string, queryCondition QueryCondition, outSlicePtr any, table map[string]any) error {
-	panicIfNotSlicePointer(outSlicePtr)
-	panicIfInvalidQueryCondition(queryCondition)
-
+func (s *MemoryStore) QueryItems(pk, sk string, queryCondition QueryCondition) ([]Resource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -153,46 +40,109 @@ func (s *MemoryStorage) runMemoryQuery(pk, sk string, queryCondition QueryCondit
 	skPrefix := fmt.Sprintf("%v#", strings.Split(sk, "#")[0])
 	type FilterFunc = func(sk string) bool
 	var filter FilterFunc
-	if queryCondition == QUERY_BEGINS_WITH {
+	if queryCondition == QueryBeginsWith {
 		filter = func(key string) bool {
 			return strings.HasPrefix(key, skPrefix)
 		}
-	} else if queryCondition == QUERY_GREATER_THAN {
+	} else if queryCondition == QueryGreaterThan {
 		filter = func(key string) bool {
 			return strings.HasPrefix(key, skPrefix) && key > sk
 		}
-	} else if queryCondition == QUERY_LOWER_THAN {
+	} else if queryCondition == QueryLowerThan {
 		filter = func(key string) bool {
 			return strings.HasPrefix(key, skPrefix) && key < sk
 		}
 	}
 
-	// Filter out items based of the partition and sort keys
-	var items []interface{}
-	for k, v := range table {
+	// Filter out resources based of the partition and sort keys
+	var resources []Resource
+	for k, v := range s.items {
 		parts := strings.Split(k, ":")
 		if pk == parts[0] && filter(parts[1]) {
-			items = append(items, v)
+			resources = append(resources, v)
 		}
 	}
 
-	// Sort the items in ascending order by sort keys
-	sort.Slice(items, func(i, j int) bool {
-		itemI := items[i].(PrimaryKeyProvider)
-		itemJ := items[j].(PrimaryKeyProvider)
-
-		return itemI.GetSortKey() < itemJ.GetSortKey()
+	// Sort the resources in ascending order by sort keys
+	sort.Slice(resources, func(i, j int) bool {
+		return resources[i].SortKey < resources[j].SortKey
 	})
 
-	// Convert outSlicePtr (a pointer to a items) into a reflection interface
-	outSlicePtrValue := reflect.ValueOf(outSlicePtr)
-	// Dereference the pointer to access the underlying items value
-	outSliceValue := outSlicePtrValue.Elem()
-	// Add items to the output slice using reflection
-	for _, v := range items {
-		item := reflect.ValueOf(v).Elem()
-		outSliceValue.Set(reflect.Append(outSliceValue, item))
+	return resources, nil
+}
+
+func (s *MemoryStore) DeleteItem(pk, sk string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := getPrimaryKey(pk, sk)
+	delete(s.items, key)
+
+	return nil
+}
+
+func (s *MemoryStore) UpdateItem(pk, sk string, updates map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := getPrimaryKey(pk, sk)
+	item, ok := s.items[key]
+	if !ok {
+		return ErrNotFound
+	}
+
+	// Get the reflect.Value of the struct
+	v := reflect.ValueOf(&item).Elem() // Get a pointer to the value to make it addressable
+
+	// Iterate over the updates and set the fields
+	for fieldName, value := range updates {
+		field := v.FieldByName(fieldName)
+
+		// Check if the field exists and is settable
+		if !field.IsValid() {
+			return fmt.Errorf("no such field: %s in target struct", fieldName)
+		}
+		if !field.CanSet() {
+			return fmt.Errorf("cannot set field: %s", fieldName)
+		}
+
+		// Check type compatibility
+		fieldValue := reflect.ValueOf(value)
+		if field.Type() != fieldValue.Type() {
+			return fmt.Errorf("type mismatch for field: %s", fieldName)
+		}
+
+		// Update the field
+		field.Set(fieldValue)
+	}
+
+	// Write the updated struct back into the map
+	s.items[key] = item
+	return nil
+}
+
+func (s *MemoryStore) WriteItem(resource Resource) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := getPrimaryKey(resource.PartitionKey, resource.SortKey)
+	s.items[key] = resource
+
+	return nil
+}
+
+func (s *MemoryStore) BatchWriteItems(resources []Resource) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, r := range resources {
+		key := getPrimaryKey(r.PartitionKey, r.SortKey)
+		s.items[key] = r
 	}
 
 	return nil
+}
+
+func getPrimaryKey(pk, sk string) string {
+	return fmt.Sprintf("%s:%s", pk, sk)
 }

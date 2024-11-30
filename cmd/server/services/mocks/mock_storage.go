@@ -9,9 +9,16 @@ type MockStorage struct {
 	mock.Mock
 }
 
-func (m *MockStorage) GetItem(pk, sk string, outPtr any) error {
-	args := m.Called(pk, sk, outPtr)
-	return args.Error(0)
+func (m *MockStorage) GetItem(pk, sk string) (storage.Resource, error) {
+	args := m.Called(pk, sk)
+	r, _ := args.Get(0).(storage.Resource)
+	return r, args.Error(1)
+}
+
+func (m *MockStorage) QueryItems(pk, skPrefix string, queryCondition storage.QueryCondition) ([]storage.Resource, error) {
+	args := m.Called(pk, skPrefix, queryCondition)
+	r, _ := args.Get(0).([]storage.Resource)
+	return r, args.Error(1)
 }
 
 func (m *MockStorage) DeleteItem(pk, sk string) error {
@@ -19,22 +26,17 @@ func (m *MockStorage) DeleteItem(pk, sk string) error {
 	return args.Error(0)
 }
 
-func (m *MockStorage) WriteItem(item storage.PrimaryKeyProvider) error {
-	args := m.Called(item)
+func (m *MockStorage) UpdateItem(pk, sk string, updates map[string]interface{}) error {
+	args := m.Called(pk, sk, updates)
 	return args.Error(0)
 }
 
-func (m *MockStorage) BatchWriteItems(items []storage.PrimaryKeyProvider) error {
-	args := m.Called(items)
+func (m *MockStorage) WriteItem(resource storage.Resource) error {
+	args := m.Called(resource)
 	return args.Error(0)
 }
 
-func (m *MockStorage) QueryItems(pk, skPrefix string, queryCondition storage.QueryCondition, out interface{}) error {
-	args := m.Called(pk, skPrefix, queryCondition, out)
-	return args.Error(0)
-}
-
-func (m *MockStorage) QueryItemsBySenderID(senderID, skPrefix string, queryCondition storage.QueryCondition, out interface{}) error {
-	args := m.Called(senderID, skPrefix, queryCondition, out)
+func (m *MockStorage) BatchWriteItems(resources []storage.Resource) error {
+	args := m.Called(resources)
 	return args.Error(0)
 }

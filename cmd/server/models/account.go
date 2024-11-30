@@ -1,54 +1,43 @@
 package models
 
 import (
-	"fmt"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"signal-chat/cmd/server/storage"
+	"strings"
 )
 
+var accountKeyPrefix = "acc#"
+
 type Account struct {
-	storage.TableItem
-	Name           string `dynamodbav:"name"`
-	PasswordHash   []byte `dynamodbav:"passwordHash"`
-	SignedPreKeyID string `dynamodbav:"signedPreKeyID"`
+	SignedPreKeyID string `json:"-"` // ignore in responses
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	CreatedAt      string `json:"createdAt"`
 }
 
-func NewAccount(name, pwd, signedPreKeyID string) (*Account, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
+func (a *Account) GetPrimaryKey() storage.PrimaryKey {
+	return storage.PrimaryKey{
+		PartitionKey: accountKeyPrefix + a.ID,
+		SortKey:      accountKeyPrefix + a.ID,
 	}
+}
+
+func NewAccountPrimaryKey() storage.PrimaryKey {
 	id := uuid.New().String()
-	return &Account{
-		TableItem: storage.TableItem{
-			PartitionKey: AccountPartitionKey(id),
-			SortKey:      AccountSortKey(id),
-			CreatedAt:    getTimestamp(),
-		},
-		Name:           name,
-		PasswordHash:   hash,
-		SignedPreKeyID: signedPreKeyID,
-	}, nil
+	return GetAccountPrimaryKey(id)
 }
 
-func (a *Account) GetPartitionKey() string {
-	return a.PartitionKey
+func GetAccountPrimaryKey(id string) storage.PrimaryKey {
+	return storage.PrimaryKey{
+		PartitionKey: accountKeyPrefix + id,
+		SortKey:      accountKeyPrefix + id,
+	}
 }
 
-func (a *Account) GetSortKey() string {
-	return a.SortKey
+func IsAccount(r storage.Resource) bool {
+	return strings.HasPrefix(r.SortKey, accountKeyPrefix)
 }
 
-func (a *Account) VerifyPassword(password string) bool {
-	err := bcrypt.CompareHashAndPassword(a.PasswordHash, []byte(password))
-	return err == nil
-}
-
-func AccountPartitionKey(accountId string) string {
-	return fmt.Sprintf("acc#%s", accountId)
-}
-
-func AccountSortKey(accountId string) string {
-	return fmt.Sprintf("acc#%s", accountId)
+func ToAccountID(primaryKey storage.PrimaryKey) string {
+	return strings.Split(primaryKey.PartitionKey, "#")[0]
 }

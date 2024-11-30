@@ -3,14 +3,13 @@ package mocks
 import (
 	"github.com/stretchr/testify/mock"
 	"signal-chat/cmd/server/models"
-	"signal-chat/internal/api"
 )
 
 type MockAccountService struct {
 	mock.Mock
 }
 
-func (m *MockAccountService) CreateAccount(name, pwd string, req api.CreateAccountRequest) (string, error) {
+func (m *MockAccountService) CreateAccount(name, pwd string, req models.CreateAccountRequest) (string, error) {
 	args := m.Called(name, pwd, req)
 	return args.String(0), args.Error(1)
 }

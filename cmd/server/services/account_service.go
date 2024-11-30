@@ -3,61 +3,265 @@ package services
 import (
 	"errors"
 	"fmt"
+	"github.com/crossle/libsignal-protocol-go/ecc"
+	"golang.org/x/crypto/bcrypt"
+	"math/rand"
 	"signal-chat/cmd/server/models"
 	"signal-chat/cmd/server/storage"
-	"signal-chat/internal/api"
 )
 
-type AccountService interface {
-	CreateAccount(name, pwd string, req api.CreateAccountRequest) (string, error)
-	GetAccount(id string) (*models.Account, error)
+type AccountsService interface {
+	CreateAccount(name, pwd string, identityKey [32]byte, signedPrekey models.SignedPreKey, preKeys []models.PreKey) (models.Account, error)
+	GetAccount(id string) (models.Account, error)
+	GetSession(acc models.Account) (models.Session, error)
+	GetKeyBundle(id string) (models.KeyBundle, error)
+	GetPreKeyCount(acc models.Account) (int, error)
+	UploadNewPreKeys(acc models.Account, signedPrekey models.SignedPreKey, preKeys []models.PreKey) error
 }
 
-type accountService struct {
-	storage storage.Backend
+type accountsService struct {
+	storage storage.Store
 }
 
-func NewAccountService(storage storage.Backend) AccountService {
-	return &accountService{storage: storage}
+func NewAccountsService(storage storage.Store) AccountsService {
+	return &accountsService{storage: storage}
 }
 
-func (s *accountService) CreateAccount(name, pwd string, req api.CreateAccountRequest) (string, error) {
-	acc, err := models.NewAccount(name, pwd, req.SignedPreKey.KeyID)
-	if err != nil {
-		return "", err
-	}
-	err = s.storage.WriteItem(acc)
-	if err != nil {
-		return "", fmt.Errorf("failed to write account: %w", err)
-	}
-	var accID = acc.GetID()
-
-	identityKey := models.NewIdentityKey(accID, [32]byte(req.IdentityPublicKey))
-	err = s.storage.WriteItem(identityKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to write identity key: %w", err)
+func (s *accountsService) CreateAccount(name, pwd string, identityKey [32]byte, signedPreKey models.SignedPreKey, preKeys []models.PreKey) (models.Account, error) {
+	signedKeyValid := ecc.VerifySignature(ecc.NewDjbECPublicKey(identityKey), signedPreKey.PublicKey, [64]byte(signedPreKey.Signature))
+	if !signedKeyValid {
+		return models.Account{}, ErrInvalidSignature
 	}
 
-	signedPreKey := models.NewSignedPreKey(accID, req.SignedPreKey.KeyID, [32]byte(req.SignedPreKey.PublicKey), [64]byte(req.SignedPreKey.Signature))
-	err = s.storage.WriteItem(signedPreKey)
+	pwdHash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
 	if err != nil {
-		return "", fmt.Errorf("failed to write signed pre key: %w", err)
+		return models.Account{}, fmt.Errorf("error hashing password: %w", err)
 	}
 
-	return accID, nil
+	accKey := models.NewAccountPrimaryKey()
+	timestamp := storage.GetTimestamp()
+
+	resources := []storage.Resource{
+		// Add account profile resource
+		{
+			PrimaryKey:     accKey,
+			CreatedAt:      timestamp,
+			UpdatedAt:      timestamp,
+			Name:           &name,
+			PasswordHash:   pwdHash,
+			SignedPreKeyID: &signedPreKey.KeyID,
+		},
+		// Add identity key
+		{
+			PrimaryKey: models.GetIdentityKeyPrimaryKey(accKey),
+			CreatedAt:  timestamp,
+			UpdatedAt:  timestamp,
+			PublicKey:  identityKey,
+		},
+		// Add signed pre key
+		{
+			PrimaryKey: models.GetSignedPreKeyPrimaryKey(accKey, signedPreKey.KeyID),
+			CreatedAt:  timestamp,
+			UpdatedAt:  timestamp,
+			PublicKey:  [32]byte(signedPreKey.PublicKey),
+			Signature:  [64]byte(signedPreKey.Signature),
+		},
+	}
+	// Add one-time prekeys
+	for _, p := range preKeys {
+		preKey := storage.Resource{
+			PrimaryKey: models.GetPreKeyPrimaryKey(accKey, p.KeyID),
+			CreatedAt:  timestamp,
+			UpdatedAt:  timestamp,
+			PublicKey:  [32]byte(p.PublicKey),
+		}
+		resources = append(resources, preKey)
+	}
+
+	err = s.storage.BatchWriteItems(resources)
+	if err != nil {
+		return models.Account{}, fmt.Errorf("failed to write items to storage: %w", err)
+	}
+
+	a := resources[0]
+	return models.Account{
+		ID:             models.ToAccountID(a.PrimaryKey),
+		Name:           *a.Name,
+		CreatedAt:      a.CreatedAt,
+		SignedPreKeyID: *a.SignedPreKeyID,
+	}, nil
 }
 
-func (s *accountService) GetAccount(id string) (*models.Account, error) {
-	accPk := models.AccountPartitionKey(id)
-	var acc models.Account
-	err := s.storage.GetItem(accPk, models.AccountSortKey(id), &acc)
+func (s *accountsService) GetAccount(id string) (models.Account, error) {
+	primKey := models.GetAccountPrimaryKey(id)
+	r, err := s.storage.GetItem(primKey.PartitionKey, primKey.SortKey)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, ErrAccountNotFound
+			return models.Account{}, ErrAccountNotFound
 		} else {
-			return nil, fmt.Errorf("error getting account: %w", err)
+			return models.Account{}, fmt.Errorf("error getting account profile: %w", err)
 		}
 	}
 
-	return &acc, nil
+	return models.Account{
+		ID:             models.ToAccountID(r.PrimaryKey),
+		Name:           *r.Name,
+		CreatedAt:      r.CreatedAt,
+		SignedPreKeyID: *r.SignedPreKeyID,
+	}, nil
+}
+
+func (s *accountsService) GetSession(acc models.Account) (models.Session, error) {
+	accKey := models.GetAccountPrimaryKey(acc.ID)
+	items, err := s.storage.QueryItems(accKey.PartitionKey, "", storage.QueryBeginsWith)
+	if err != nil {
+		return models.Session{}, fmt.Errorf("error querying account: %w", err)
+	}
+
+	res := models.Session{}
+	for _, item := range items {
+		if models.IsAccount(item) {
+			res.Account = models.Account{
+				ID:             models.ToAccountID(item.PrimaryKey),
+				Name:           *item.Name,
+				CreatedAt:      item.CreatedAt,
+				SignedPreKeyID: *item.SignedPreKeyID,
+			}
+		} else if models.IsConversation(item) {
+			res.Conversations = append(res.Conversations, models.Conversation{
+				ID:                   models.ToConversationID(item.PrimaryKey),
+				LastMessageSnippet:   *item.LastMessageSnippet,
+				LastMessageTimestamp: *item.LastMessageTimestamp,
+				LastMessageSenderID:  *item.SenderID,
+			})
+		}
+	}
+
+	return res, nil
+}
+
+func (s *accountsService) GetKeyBundle(id string) (models.KeyBundle, error) {
+	acc, err := s.GetAccount(id)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return models.KeyBundle{}, ErrAccountNotFound
+		}
+		return models.KeyBundle{}, err
+	}
+
+	// Retrieve all keys from the storage
+	primKey := models.GetPreKeyPrimaryKey(acc.GetPrimaryKey(), "")
+	items, err := s.storage.QueryItems(primKey.PartitionKey, primKey.SortKey, storage.QueryBeginsWith)
+	if err != nil {
+		return models.KeyBundle{}, fmt.Errorf("error querying account keys: %w", err)
+	}
+
+	result := models.KeyBundle{}
+	// Pick only the most recent signed prekey
+	signedPreKeyPrimKey := models.GetSignedPreKeyPrimaryKey(acc.GetPrimaryKey(), acc.SignedPreKeyID)
+
+	var preKeyItems []storage.Resource
+	for _, item := range items {
+		if models.IsIdentityKey(item) {
+			result.IdentityKey = item.PublicKey[:]
+		} else if models.IsSignedPreKey(item) && item.SortKey == signedPreKeyPrimKey.SortKey {
+			result.SignedPreKey = models.PreKey{
+				KeyID:     models.ToSignedPreKeyID(item.PrimaryKey),
+				PublicKey: item.PublicKey[:],
+			}
+		} else if models.IsPreKey(item) {
+			preKeyItems = append(preKeyItems, item)
+		}
+	}
+
+	if len(preKeyItems) == 0 {
+		// Early exit if there are no one-time prekeys in the storage
+		return result, nil
+	}
+
+	// Randomly pick one of the one-time prekeys
+	index := rand.Intn(len(preKeyItems))
+	preKeyRes := preKeyItems[index]
+	result.PreKey = models.PreKey{
+		KeyID:     models.ToPreKeyID(preKeyRes.PrimaryKey),
+		PublicKey: preKeyRes.PublicKey[:],
+	}
+
+	// Delete the prekey from storage
+	err = s.storage.DeleteItem(preKeyRes.PartitionKey, preKeyRes.SortKey)
+	if err != nil {
+		return models.KeyBundle{}, fmt.Errorf("failed to delete prekey: %w", err)
+	}
+
+	return result, nil
+}
+
+func (s *accountsService) GetPreKeyCount(acc models.Account) (int, error) {
+	primKey := models.GetPreKeyPrimaryKey(acc.GetPrimaryKey(), "")
+	items, err := s.storage.QueryItems(primKey.PartitionKey, primKey.SortKey, storage.QueryBeginsWith)
+	if err != nil {
+		return 0, fmt.Errorf("error getting pre key count: %w", err)
+	}
+
+	count := 0
+	for _, item := range items {
+		if models.IsPreKey(item) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (s *accountsService) UploadNewPreKeys(acc models.Account, signedPreKey models.SignedPreKey, preKeys []models.PreKey) error {
+	accKey := acc.GetPrimaryKey()
+	// Verify signature of the signed prekey
+	identityPrimaryKey := models.GetIdentityKeyPrimaryKey(accKey)
+	identityKey, err := s.storage.GetItem(identityPrimaryKey.PartitionKey, identityPrimaryKey.SortKey)
+	if err != nil {
+		return fmt.Errorf("failed to get identity key: %w", err)
+	}
+
+	signedKeyValid := ecc.VerifySignature(ecc.NewDjbECPublicKey(identityKey.PublicKey), signedPreKey.PublicKey, [64]byte(signedPreKey.Signature))
+	if !signedKeyValid {
+		return ErrInvalidSignature
+	}
+
+	timestamp := storage.GetTimestamp()
+	keys := []storage.Resource{
+		// Add signed prekey
+		{
+			PrimaryKey: models.GetSignedPreKeyPrimaryKey(accKey, signedPreKey.KeyID),
+			CreatedAt:  timestamp,
+			UpdatedAt:  timestamp,
+			PublicKey:  [32]byte(signedPreKey.PublicKey),
+			Signature:  [64]byte(signedPreKey.Signature),
+		},
+	}
+
+	// Add one-time prekeys
+	for _, p := range preKeys {
+		preKey := storage.Resource{
+			PrimaryKey: models.GetPreKeyPrimaryKey(accKey, p.KeyID),
+			CreatedAt:  timestamp,
+			UpdatedAt:  timestamp,
+			PublicKey:  [32]byte(p.PublicKey),
+		}
+		keys = append(keys, preKey)
+	}
+	err = s.storage.BatchWriteItems(keys)
+	if err != nil {
+		return fmt.Errorf("failed to write prekeys to storage: %w", err)
+	}
+
+	// Update signed prekey ID in account profile
+	updates := map[string]interface{}{
+		"UpdatedAt":      storage.GetTimestamp(),
+		"SignedPreKeyID": signedPreKey.KeyID,
+	}
+	err = s.storage.UpdateItem(accKey.PartitionKey, accKey.SortKey, updates)
+	if err != nil {
+		return fmt.Errorf("failed to update account's signed prekey ID: %w", err)
+	}
+
+	return nil
 }
