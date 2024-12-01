@@ -9,13 +9,13 @@ import (
 )
 
 type MemoryStore struct {
-	items map[string]Resource
-	mu    sync.RWMutex
+	resources []Resource
+	mu        sync.RWMutex
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		items: make(map[string]Resource),
+		resources: make([]Resource, 0),
 	}
 }
 
@@ -23,13 +23,13 @@ func (s *MemoryStore) GetItem(pk, sk string) (Resource, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := getPrimaryKey(pk, sk)
-	item, ok := s.items[key]
-	if !ok {
-		return Resource{}, ErrNotFound
+	for _, res := range s.resources {
+		if res.PartitionKey == pk && res.SortKey == sk {
+			return res, nil
+		}
 	}
 
-	return item, nil
+	return Resource{}, ErrNotFound
 }
 
 func (s *MemoryStore) QueryItems(pk, sk string, queryCondition QueryCondition) ([]Resource, error) {
@@ -37,47 +37,50 @@ func (s *MemoryStore) QueryItems(pk, sk string, queryCondition QueryCondition) (
 	defer s.mu.Unlock()
 
 	// Create a function that will evaluate sort key matches based on the specified query condition
-	skPrefix := fmt.Sprintf("%v#", strings.Split(sk, "#")[0])
+	skPrefix := strings.Split(sk, "#")[0]
 	type FilterFunc = func(sk string) bool
-	var filter FilterFunc
+	var skFilter FilterFunc
 	if queryCondition == QueryBeginsWith {
-		filter = func(key string) bool {
+		skFilter = func(key string) bool {
 			return strings.HasPrefix(key, skPrefix)
 		}
 	} else if queryCondition == QueryGreaterThan {
-		filter = func(key string) bool {
+		skFilter = func(key string) bool {
 			return strings.HasPrefix(key, skPrefix) && key > sk
 		}
 	} else if queryCondition == QueryLowerThan {
-		filter = func(key string) bool {
+		skFilter = func(key string) bool {
 			return strings.HasPrefix(key, skPrefix) && key < sk
 		}
 	}
 
 	// Filter out resources based of the partition and sort keys
-	var resources []Resource
-	for k, v := range s.items {
-		parts := strings.Split(k, ":")
-		if pk == parts[0] && filter(parts[1]) {
-			resources = append(resources, v)
+	var selected []Resource
+	for _, res := range s.resources {
+		if res.PartitionKey == pk && skFilter(res.SortKey) == true {
+			selected = append(selected, res)
 		}
 	}
 
-	// Sort the resources in ascending order by sort keys
-	sort.Slice(resources, func(i, j int) bool {
-		return resources[i].SortKey < resources[j].SortKey
+	// Sort the selected in ascending order by sort keys
+	sort.Slice(selected, func(i, j int) bool {
+		return selected[i].SortKey < selected[j].SortKey
 	})
 
-	return resources, nil
+	return selected, nil
 }
 
 func (s *MemoryStore) DeleteItem(pk, sk string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := getPrimaryKey(pk, sk)
-	delete(s.items, key)
+	index := s.findResourceIndex(pk, sk)
+	if index == -1 {
+		// Item doesn't exist, no need to delete anything
+		return nil
+	}
 
+	s.resources = append(s.resources[:index], s.resources[index+1:]...)
 	return nil
 }
 
@@ -85,12 +88,13 @@ func (s *MemoryStore) UpdateItem(pk, sk string, updates map[string]interface{}) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := getPrimaryKey(pk, sk)
-	item, ok := s.items[key]
-	if !ok {
+	index := s.findResourceIndex(pk, sk)
+	if index == -1 {
+		// Item doesn't exist, return error
 		return ErrNotFound
 	}
 
+	item := s.resources[index]
 	// Get the reflect.Value of the struct
 	v := reflect.ValueOf(&item).Elem() // Get a pointer to the value to make it addressable
 
@@ -117,7 +121,7 @@ func (s *MemoryStore) UpdateItem(pk, sk string, updates map[string]interface{}) 
 	}
 
 	// Write the updated struct back into the map
-	s.items[key] = item
+	s.resources[index] = item
 	return nil
 }
 
@@ -125,9 +129,7 @@ func (s *MemoryStore) WriteItem(resource Resource) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := getPrimaryKey(resource.PartitionKey, resource.SortKey)
-	s.items[key] = resource
-
+	s.resources = append(s.resources, resource)
 	return nil
 }
 
@@ -135,14 +137,17 @@ func (s *MemoryStore) BatchWriteItems(resources []Resource) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, r := range resources {
-		key := getPrimaryKey(r.PartitionKey, r.SortKey)
-		s.items[key] = r
-	}
-
+	s.resources = append(s.resources, resources...)
 	return nil
 }
 
-func getPrimaryKey(pk, sk string) string {
-	return fmt.Sprintf("%s:%s", pk, sk)
+func (s *MemoryStore) findResourceIndex(pk, sk string) int {
+	index := -1
+	for i, res := range s.resources {
+		if res.PartitionKey == pk && res.SortKey == sk {
+			index = i
+		}
+	}
+
+	return index
 }

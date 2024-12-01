@@ -5,285 +5,197 @@ import (
 	"testing"
 )
 
-// Struct for testing
-type TestItem struct {
-	PartitionKey string
-	SortKey      string
-	Value        string
-	SenderID     string
-}
-
-func (i *TestItem) GetPartitionKey() string {
-	return i.PartitionKey
-}
-
-func (i *TestItem) GetSortKey() string {
-	return i.SortKey
-}
-
 // Test for WriteItem and GetItem
-func TestNewMemoryStorage(t *testing.T) {
+func TestNewMemoryStore(t *testing.T) {
 	storage := NewMemoryStore()
-	if storage == nil || storage.items == nil {
+	if storage == nil || storage.resources == nil {
 		t.Fatal("Expected non-nil MemoryStore instance")
 	}
 }
 
 // Test for GetItem with type mismatch
-func TestMemoryStorage_GetItem(t *testing.T) {
-	t.Run("when item exists", func(t *testing.T) {
+func TestMemoryStore_GetItem(t *testing.T) {
+	t.Run("returns error when item doesn't exist", func(t *testing.T) {
 		// Arrange
-		storage := NewMemoryStore()
-		item := TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"}
-		err := storage.WriteItem(&item)
-		if err != nil {
-			t.Fatalf("WriteItem failed: %v", err)
-		}
+		memStore := NewMemoryStore()
 
 		// Act
-		var result TestItem
-		err = storage.GetItem("pk1", "sk1", &result)
+		item, err := memStore.GetItem("pk1", "sk1")
+
+		// Assert
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrNotFound)
+		assert.Equal(t, "", item.PartitionKey)
+	})
+	t.Run("test success when item exists", func(t *testing.T) {
+		// Arrange
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
+
+		// Act
+		item, err := memStore.GetItem("acc#123", "conv#abs")
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Equal(t, item, result)
+		assert.Equal(t, "acc#123", item.PartitionKey)
+		assert.Equal(t, "conv#abs", item.SortKey)
 	})
-	t.Run("when item doesn't exist", func(t *testing.T) {
+}
+
+// Test for QueryItems
+func TestMemoryStore_QueryItems(t *testing.T) {
+	t.Run("test success with QUERY_BEGINS_WITH query", func(t *testing.T) {
 		// Arrange
-		storage := NewMemoryStore()
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
 
 		// Act
-		var result TestItem
-		err := storage.GetItem("pk1", "sk1", &result)
+		items, err := memStore.QueryItems("conv#abs", "", QueryBeginsWith)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, items, 4)
+		for _, item := range items {
+			assert.Equal(t, "conv#abs", item.PartitionKey)
+			// Check whether the sort key if one the specified sort keys
+			assert.Contains(t, []string{"conv#abs", "acc#123", "msg#1", "msg#2"}, item.SortKey)
+		}
+	})
+	t.Run("success with QUERY_GREATER_THAN query condition", func(t *testing.T) {
+		// Arrange
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
+
+		// Act
+		items, err := memStore.QueryItems("conv#abs", "msg#1", QueryGreaterThan)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, items, 1)
+		assert.Equal(t, "msg#2", items[0].SortKey)
+	})
+	t.Run("success with QUERY_LOWER_THAN query condition", func(t *testing.T) {
+		// Arrange
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
+
+		// Act
+		items, err := memStore.QueryItems("conv#abs", "msg#2", QueryLowerThan)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, items, 1)
+		assert.Equal(t, "msg#1", items[0].SortKey)
+	})
+}
+
+// Test for DeleteItem
+func TestMemoryStore_DeleteItem(t *testing.T) {
+	t.Run("returns no error when item doesn't exist", func(t *testing.T) {
+		// Arrange
+		memStore := NewMemoryStore()
+
+		// Act
+		err := memStore.DeleteItem("pk#1", "sk#1")
+
+		// Assert
+		assert.NoError(t, err)
+	})
+	t.Run("removes item from storage when it exists", func(t *testing.T) {
+		// Arrange
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
+
+		// Act
+		err := memStore.DeleteItem("acc#123", "acc#123")
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, memStore.resources, len(testResources)-1)
+		// Assert that the account resource was deleted
+		assert.NotContains(t, memStore.resources, testResources[0], "item was not removed from the internal storage")
+	})
+}
+
+func TestMemoryStore_UpdateItem(t *testing.T) {
+	t.Run("returns error when item doesn't exist", func(t *testing.T) {
+		// Arrange
+		memStore := NewMemoryStore()
+
+		// Act
+		err := memStore.UpdateItem("pk#1", "sk#1", map[string]interface{}{"Name": "test"})
 
 		// Assert
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
-	t.Run("when outPtr is nil pointer", func(t *testing.T) {
+	t.Run("returns error when updating not-existing field", func(t *testing.T) {
 		// Arrange
-		storage := NewMemoryStore()
-
-		// Act + Assert
-		var result *TestItem
-		assert.Panics(t, func() { _ = storage.GetItem("pk1", "sk1", result) })
-	})
-	t.Run("when outPtr pointer has invalid type", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-		item := TestItem{PartitionKey: "pk1", SortKey: "sk1", Value: "test1"}
-		err := storage.WriteItem(&item)
-		if err != nil {
-			t.Fatalf("WriteItem failed: %v", err)
-		}
-
-		// Act + Assert
-		var wrongType int
-		assert.Panics(t, func() { _ = storage.GetItem("pk1", "sk1", &wrongType) })
-	})
-
-}
-
-// Test for QueryItems
-func TestMemoryStorage_QueryItems(t *testing.T) {
-	t.Run("success with QUERY_BEGINS_WITH query condition", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-		err := storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "sk#1", Value: "test1"})
-		err = storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test2"})
-		err = storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "xx#1", Value: "test3"})
-		if err != nil {
-			t.Fatalf("WriteItem failed: %v", err)
-		}
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
 
 		// Act
-		var results []TestItem
-		err = storage.QueryItems("pk#1", "sk", QueryBeginsWith, &results)
-		if err != nil {
-			t.Fatalf("QueryItems failed: %v", err)
-		}
+		err := memStore.UpdateItem("acc#123", "acc#123", map[string]interface{}{"NotExisting": "test"})
 
 		// Assert
-		assert.Len(t, results, 2)
-		var sortKeys []string
-		for _, item := range results {
-			sortKeys = append(sortKeys, item.SortKey)
-		}
-		assert.Equal(t, sortKeys[0], "sk#1")
-		assert.Equal(t, sortKeys[1], "sk#2")
+		assert.Error(t, err)
+		assert.Equal(t, testResources, memStore.resources) // assert that resource weren't changes
 	})
-	t.Run("success with QUERY_GREATER_THAN query condition", func(t *testing.T) {
+	t.Run("returns error when updated value type doesn't match field type", func(t *testing.T) {
 		// Arrange
-		storage := NewMemoryStore()
-		err := storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "sk#1", Value: "test1"})
-		err = storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test2"})
-		err = storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "xx#3", Value: "test3"})
-		if err != nil {
-			t.Fatalf("WriteItem failed: %v", err)
-		}
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
 
 		// Act
-		var results []TestItem
-		err = storage.QueryItems("pk#1", "sk#0", QueryGreaterThan, &results)
-		if err != nil {
-			t.Fatalf("QueryItems failed: %v", err)
-		}
+		err := memStore.UpdateItem("acc#123", "acc#123", map[string]interface{}{"Name": 1})
 
 		// Assert
-		assert.Len(t, results, 2)
-		assert.Equal(t, results[0].SortKey, "sk#1")
-		assert.Equal(t, results[1].SortKey, "sk#2")
+		assert.Error(t, err)
+		assert.Equal(t, testResources, memStore.resources) // assert that resource weren't changes
 	})
-	t.Run("success with QUERY_LOWER_THAN query condition", func(t *testing.T) {
+	t.Run("test success", func(t *testing.T) {
 		// Arrange
-		storage := NewMemoryStore()
-		err := storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "sk#1", Value: "test1"})
-		err = storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test2"})
-		err = storage.WriteItem(&TestItem{PartitionKey: "pk#1", SortKey: "xx#3", Value: "test3"})
-		if err != nil {
-			t.Fatalf("WriteItem failed: %v", err)
-		}
+		memStore := NewMemoryStore()
+		memStore.resources = append(memStore.resources, testResources...)
 
 		// Act
-		var results []TestItem
-		err = storage.QueryItems("pk#1", "sk#2", QueryLowerThan, &results)
-		if err != nil {
-			t.Fatalf("QueryItems failed: %v", err)
-		}
-
-		// Assert
-		assert.Len(t, results, 1)
-		assert.Equal(t, results[0].SortKey, "sk#1")
-	})
-	t.Run("panics when outSlicePtr not valid pointer", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-
-		// Act
-		var results []string
-		assert.Panics(t, func() { _ = storage.QueryItems("pk#1", "sk#1", QueryBeginsWith, results) })
-	})
-	t.Run("panics when outSlicePtr not slice pointer", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-
-		// Act
-		var results int
-		assert.Panics(t, func() { _ = storage.QueryItems("pk#1", "sk#1", QueryBeginsWith, &results) })
-	})
-	t.Run("panics when invalid query condition", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-
-		// Act
-		var results []TestItem
-		assert.Panics(t, func() { _ = storage.QueryItems("pk#1", "sk#1", "invalid condition", &results) })
-	})
-}
-
-func TestMemoryStorage_QueryItemsBySenderID(t *testing.T) {
-	t.Run("success with QUERY_BEGINS_WITH query condition", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-		testItem1 := TestItem{PartitionKey: "pk#1", SortKey: "sk#1", Value: "test1", SenderID: "123"}
-		testItem2 := TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test1", SenderID: "123"}
-		storage.bySenderID["123:sk#1"] = &testItem1
-		storage.bySenderID["123:sk#2"] = &testItem2
-
-		// Act
-		var results []TestItem
-		err := storage.QueryItemsBySenderID("123", "sk", QueryBeginsWith, &results)
+		sid := "test"
+		err := memStore.UpdateItem("acc#123", "acc#123", map[string]interface{}{"SignedPreKeyID": &sid})
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Len(t, results, 2)
-		var sortKeys []string
-		for _, item := range results {
-			sortKeys = append(sortKeys, item.SortKey)
-		}
-		assert.Equal(t, sortKeys[0], "sk#1")
-		assert.Equal(t, sortKeys[1], "sk#2")
+		assert.Equal(t, "test", *memStore.resources[0].SignedPreKeyID) // assert the account resource was updated
 	})
 }
 
 // Test for DeleteItem
-func TestMemoryStorage_DeleteItem(t *testing.T) {
-	t.Run("when item with SenderID field", func(t *testing.T) {
+func TestMemoryStore_WriteItem(t *testing.T) {
+	t.Run("test success", func(t *testing.T) {
 		// Arrange
 		storage := NewMemoryStore()
-		testItem := TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test1", SenderID: "123"}
-		storage.items["pk#1:sk#1"] = &testItem
-		storage.bySenderID["123:sk#1"] = &testItem
 
 		// Act
-		err := storage.DeleteItem("pk#1", "sk#1")
+		err := storage.WriteItem(testResources[0])
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Empty(t, storage.items)
-		assert.Empty(t, storage.bySenderID)
-	})
-}
-
-// Test for DeleteItem
-func TestMemoryStorage_WriteItem(t *testing.T) {
-	t.Run("when item with SenderID field", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-		testItem := TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test1", SenderID: "123"}
-
-		// Act
-		err := storage.WriteItem(&testItem)
-
-		// Assert
-		assert.NoError(t, err)
-		assert.NotEmpty(t, storage.items)
-		assert.NotEmpty(t, storage.bySenderID)
+		assert.Len(t, storage.resources, 1)
+		assert.Equal(t, testResources[0], storage.resources[0])
 	})
 }
 
 // Test for BatchWriteItems
-func TestMemoryStorage_BatchWriteItems(t *testing.T) {
-	t.Run("writes all items on success", func(t *testing.T) {
+func TestMemoryStore_BatchWriteItems(t *testing.T) {
+	t.Run("test success", func(t *testing.T) {
 		// Arrange
 		storage := NewMemoryStore()
-		items := []PrimaryKeyProvider{
-			&TestItem{PartitionKey: "pk#1", SortKey: "sk#1", Value: "test1"},
-			&TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test2"},
-		}
 
 		// Act
-		err := storage.BatchWriteItems(items)
+		err := storage.BatchWriteItems(testResources)
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Len(t, storage.items, 2)
-	})
-	t.Run("when some items contain SenderID", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-		items := []PrimaryKeyProvider{
-			&TestItem{PartitionKey: "pk#1", SortKey: "sk#1", Value: "test1"},
-			&TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test2", SenderID: "123"},
-		}
-
-		// Act
-		err := storage.BatchWriteItems(items)
-
-		// Assert
-		assert.NoError(t, err)
-		assert.Len(t, storage.items, 2)
-		assert.Len(t, storage.bySenderID, 1)
-	})
-	t.Run("panics if one of the items is not pointer", func(t *testing.T) {
-		// Arrange
-		storage := NewMemoryStore()
-		items := []PrimaryKeyProvider{
-			nil,
-			&TestItem{PartitionKey: "pk#1", SortKey: "sk#2", Value: "test2"},
-		}
-
-		// Act + Assert
-		assert.Panics(t, func() { _ = storage.BatchWriteItems(items) })
+		assert.Len(t, storage.resources, len(testResources))
+		assert.Equal(t, testResources, storage.resources)
 	})
 }

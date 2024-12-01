@@ -58,7 +58,7 @@ func (s *DynamoDBStore) GetItem(pk, sk string) (Resource, error) {
 	return r, nil
 }
 
-// QueryItems queries items from DynamoDB by sort key prefix
+// QueryItems queries resources from DynamoDB by sort key prefix
 func (s *DynamoDBStore) QueryItems(pk, sk string, queryCondition QueryCondition) ([]Resource, error) {
 	// Prepare the query input
 	skPrefix := fmt.Sprintf("%v#", strings.Split(sk, "#")[0])
@@ -75,7 +75,7 @@ func (s *DynamoDBStore) QueryItems(pk, sk string, queryCondition QueryCondition)
 	// Perform the query operation
 	result, err := s.svc.Query(input)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query items: %w", err)
+		return nil, fmt.Errorf("failed to query resources: %w", err)
 	}
 
 	// Unmarshal the result into supplied argument
@@ -185,7 +185,7 @@ func (s *DynamoDBStore) WriteItem(resource Resource) error {
 func (s *DynamoDBStore) BatchWriteItems(resources []Resource) error {
 	const maxBatchSize = 25
 
-	// Split the items into batches of 25 (DynamoDB limit)
+	// Split the resources into batches of 25 (DynamoDB limit)
 	for i := 0; i < len(resources); i += maxBatchSize {
 		end := i + maxBatchSize
 		if end > len(resources) {
@@ -226,21 +226,21 @@ func (s *DynamoDBStore) BatchWriteItems(resources []Resource) error {
 	return nil
 }
 
-// executeBatchWriteWithRetry executes a Write Item operation and retries if there are unprocessed items
+// executeBatchWriteWithRetry executes a Write Item operation and retries if there are unprocessed resources
 func (s *DynamoDBStore) executeBatchWriteWithRetry(input *dynamodb.BatchWriteItemInput) error {
 	for {
 		// Perform the batch write operation
 		result, err := s.svc.BatchWriteItem(input)
 		if err != nil {
-			return fmt.Errorf("failed to batch write items: %v", err)
+			return fmt.Errorf("failed to batch write resources: %v", err)
 		}
 
-		// If there are no unprocessed items, return
+		// If there are no unprocessed resources, return
 		if len(result.UnprocessedItems) == 0 {
 			return nil
 		}
 
-		// If there are unprocessed items, retry them after a delay
+		// If there are unprocessed resources, retry them after a delay
 		input.RequestItems = result.UnprocessedItems
 		time.Sleep(1 * time.Second) // Backoff before retrying
 	}
