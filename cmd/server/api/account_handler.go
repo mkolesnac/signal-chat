@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"errors"
@@ -11,10 +11,10 @@ import (
 )
 
 type AccountHandler struct {
-	accounts services.AccountsService
+	accounts services.AccountService
 }
 
-func NewAccountHandler(accounts services.AccountsService) *AccountHandler {
+func NewAccountHandler(accounts services.AccountService) *AccountHandler {
 	return &AccountHandler{
 		accounts: accounts,
 	}
@@ -28,11 +28,12 @@ func (h *AccountHandler) RegisterPrivateRoutes(g *echo.Group) {
 	g.GET("/account", h.GetCurrentSession)
 	g.POST("/account/keys", h.UploadCurrentAccountKeys)
 	g.GET("/account/keys/count", h.GetCurrentAccountKeyCount)
-	g.GET("/account/:id", h.GetPublicAccountData)
+	g.GET("/account/:id", h.GetAccountProfile)
+	g.GET("/account/:id/keys", h.GetKeyBundle)
 }
 
 func (h *AccountHandler) CreateAccount(c echo.Context) error {
-	var req models.CreateAccountRequest
+	var req CreateAccountRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
 	}
@@ -62,7 +63,22 @@ func (h *AccountHandler) GetCurrentSession(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
-func (h *AccountHandler) GetPublicAccountData(c echo.Context) error {
+func (h *AccountHandler) GetAccountProfile(c echo.Context) error {
+	id := c.Param("id")
+
+	res, err := h.accounts.GetAccount(id)
+	if err != nil {
+		if errors.Is(err, services.ErrAccountNotFound) {
+			return echo.NewHTTPError(http.StatusNotFound, "Target account not found")
+		} else {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get target account public keys")
+		}
+	}
+
+	return c.JSON(http.StatusOK, res)
+}
+
+func (h *AccountHandler) GetKeyBundle(c echo.Context) error {
 	id := c.Param("id")
 
 	res, err := h.accounts.GetKeyBundle(id)
@@ -89,7 +105,7 @@ func (h *AccountHandler) GetCurrentAccountKeyCount(c echo.Context) error {
 }
 
 func (h *AccountHandler) UploadCurrentAccountKeys(c echo.Context) error {
-	var req models.UploadPreKeysRequest
+	var req UploadPreKeysRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
 	}

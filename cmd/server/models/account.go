@@ -10,12 +10,13 @@ var accountKeyPrefix = "acc#"
 
 type Account struct {
 	SignedPreKeyID string `json:"-"` // ignore in responses
+	PasswordHash   []byte `json:"-"` // ignore in responses
 	ID             string `json:"id"`
 	Name           string `json:"name"`
 	CreatedAt      string `json:"createdAt"`
 }
 
-func (a *Account) GetPrimaryKey() storage.PrimaryKey {
+func (a *Account) PrimaryKey() storage.PrimaryKey {
 	return storage.PrimaryKey{
 		PartitionKey: accountKeyPrefix + a.ID,
 		SortKey:      accountKeyPrefix + a.ID,
@@ -24,10 +25,10 @@ func (a *Account) GetPrimaryKey() storage.PrimaryKey {
 
 func NewAccountPrimaryKey() storage.PrimaryKey {
 	id := uuid.New().String()
-	return GetAccountPrimaryKey(id)
+	return AccountPrimaryKey(id)
 }
 
-func GetAccountPrimaryKey(id string) storage.PrimaryKey {
+func AccountPrimaryKey(id string) storage.PrimaryKey {
 	return storage.PrimaryKey{
 		PartitionKey: accountKeyPrefix + id,
 		SortKey:      accountKeyPrefix + id,
@@ -35,9 +36,9 @@ func GetAccountPrimaryKey(id string) storage.PrimaryKey {
 }
 
 func IsAccount(r storage.Resource) bool {
-	return strings.HasPrefix(r.SortKey, accountKeyPrefix)
+	return strings.HasPrefix(r.PartitionKey, accountKeyPrefix) && strings.HasPrefix(r.SortKey, accountKeyPrefix)
 }
 
 func ToAccountID(primaryKey storage.PrimaryKey) string {
-	return strings.Split(primaryKey.PartitionKey, "#")[0]
+	return strings.TrimPrefix(primaryKey.PartitionKey, accountKeyPrefix)
 }

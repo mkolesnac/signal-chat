@@ -12,13 +12,13 @@ type WebsocketManager interface {
 	SendToClient(receiverID string, msg interface{}) error
 }
 
-// Manager structure to manage client connections
+// AccountService structure to manage client connections
 type websocketManager struct {
-	clients map[string]*websocket.Conn // Map of account ID to websockets connection
+	clients map[string]*websocket.Conn // Map of Account ID to websockets connection
 	mu      sync.Mutex                 // Mutex for safe concurrent access
 }
 
-// Create a new manager
+// Create a new accountService
 func NewWebsocketManager() WebsocketManager {
 	return &websocketManager{
 		clients: make(map[string]*websocket.Conn),

@@ -23,24 +23,21 @@ type PreKey struct {
 	PublicKey []byte `json:"publicKey" validate:"required,32bytes"`
 }
 
-func GetIdentityKeyPrimaryKey(accKey storage.PrimaryKey) storage.PrimaryKey {
-	accID := ToAccountID(accKey)
+func IdentityKeyPrimaryKey(accID string) storage.PrimaryKey {
 	return storage.PrimaryKey{
 		PartitionKey: keysPkPrefix + accID,
 		SortKey:      identityKeySkPrefix,
 	}
 }
 
-func GetPreKeyPrimaryKey(accKey storage.PrimaryKey, keyID string) storage.PrimaryKey {
-	accID := ToAccountID(accKey)
+func PreKeyPrimaryKey(accID, keyID string) storage.PrimaryKey {
 	return storage.PrimaryKey{
 		PartitionKey: keysPkPrefix + accID,
 		SortKey:      preKeySkPrefix + keyID,
 	}
 }
 
-func GetSignedPreKeyPrimaryKey(accKey storage.PrimaryKey, keyID string) storage.PrimaryKey {
-	accID := ToAccountID(accKey)
+func SignedPreKeyPrimaryKey(accID, keyID string) storage.PrimaryKey {
 	return storage.PrimaryKey{
 		PartitionKey: keysPkPrefix + accID,
 		SortKey:      signedPreKeySkPrefix + keyID,
@@ -48,21 +45,21 @@ func GetSignedPreKeyPrimaryKey(accKey storage.PrimaryKey, keyID string) storage.
 }
 
 func IsIdentityKey(r storage.Resource) bool {
-	return strings.HasPrefix(r.SortKey, identityKeySkPrefix)
+	return strings.HasPrefix(r.PartitionKey, keysPkPrefix) && strings.HasPrefix(r.SortKey, identityKeySkPrefix)
 }
 
 func IsPreKey(r storage.Resource) bool {
-	return strings.HasPrefix(r.SortKey, preKeySkPrefix)
+	return strings.HasPrefix(r.PartitionKey, keysPkPrefix) && strings.HasPrefix(r.SortKey, preKeySkPrefix)
 }
 
 func IsSignedPreKey(r storage.Resource) bool {
-	return strings.HasPrefix(r.SortKey, signedPreKeySkPrefix)
+	return strings.HasPrefix(r.PartitionKey, keysPkPrefix) && strings.HasPrefix(r.SortKey, signedPreKeySkPrefix)
 }
 
 func ToPreKeyID(primKey storage.PrimaryKey) string {
-	return strings.Split(primKey.SortKey, "#")[0]
+	return strings.Split(primKey.SortKey, "#")[1]
 }
 
 func ToSignedPreKeyID(primKey storage.PrimaryKey) string {
-	return strings.Split(primKey.SortKey, "#")[0]
+	return strings.Split(primKey.SortKey, "#")[1]
 }

@@ -1,4 +1,4 @@
-package mocks
+package test
 
 import (
 	"github.com/stretchr/testify/mock"
@@ -11,14 +11,12 @@ type MockStorage struct {
 
 func (m *MockStorage) GetItem(pk, sk string) (storage.Resource, error) {
 	args := m.Called(pk, sk)
-	r, _ := args.Get(0).(storage.Resource)
-	return r, args.Error(1)
+	return args.Get(0).(storage.Resource), args.Error(1)
 }
 
 func (m *MockStorage) QueryItems(pk, skPrefix string, queryCondition storage.QueryCondition) ([]storage.Resource, error) {
 	args := m.Called(pk, skPrefix, queryCondition)
-	r, _ := args.Get(0).([]storage.Resource)
-	return r, args.Error(1)
+	return args.Get(0).([]storage.Resource), args.Error(1)
 }
 
 func (m *MockStorage) DeleteItem(pk, sk string) error {

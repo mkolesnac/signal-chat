@@ -8,12 +8,12 @@ import (
 	"signal-chat/cmd/server/services"
 )
 
-func BasicAuthMiddleware(accounts services.AccountsService) func(username, password string, c echo.Context) (bool, error) {
+func BasicAuthMiddleware(accounts services.AccountService) func(username, password string, c echo.Context) (bool, error) {
 	return func(username, password string, c echo.Context) (bool, error) {
 		acc, err := accounts.GetAccount(username)
 		if err != nil {
 			if errors.Is(err, services.ErrAccountNotFound) {
-				return false, echo.NewHTTPError(http.StatusBadRequest, "Account not found")
+				return false, echo.NewHTTPError(http.StatusBadRequest, "Profile not found")
 			} else {
 				c.Logger().Errorf(err.Error())
 				return false, echo.NewHTTPError(http.StatusInternalServerError, "Failed to get account")
