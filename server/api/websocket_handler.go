@@ -5,7 +5,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"net/http"
-	"signal-chat/cmd/server/services"
+	"signal-chat-server/services"
 )
 
 // Upgrader configures the WebSocket connection

@@ -6,8 +6,8 @@ import (
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"golang.org/x/crypto/bcrypt"
 	"math/rand"
-	"signal-chat/cmd/server/models"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/models"
+	"signal-chat-server/storage"
 )
 
 type AccountService interface {

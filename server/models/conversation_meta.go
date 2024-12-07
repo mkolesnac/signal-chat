@@ -1,7 +1,7 @@
 package models
 
 import (
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/storage"
 	"strings"
 )
 

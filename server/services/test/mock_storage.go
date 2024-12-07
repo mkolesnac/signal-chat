@@ -2,7 +2,7 @@ package test
 
 import (
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/storage"
 )
 
 type MockStorage struct {

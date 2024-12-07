@@ -2,7 +2,7 @@ package test
 
 import (
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/models"
+	"signal-chat-server/models"
 )
 
 type MockAccountService struct {

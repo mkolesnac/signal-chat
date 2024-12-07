@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"net/http"
-	"signal-chat/cmd/server/models"
-	"signal-chat/cmd/server/services"
+	"signal-chat-server/models"
+	"signal-chat-server/services"
 	"strconv"
 )
 

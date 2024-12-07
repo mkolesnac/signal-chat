@@ -1,8 +1,7 @@
 package models
 
 import (
-	"github.com/google/uuid"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/storage"
 	"strings"
 )
 
@@ -13,11 +12,6 @@ type Message struct {
 	CreatedAt  string `json:"createdAt"`
 	CipherText string `json:"cipherText"`
 	SenderID   string `json:"senderId"`
-}
-
-func NewMessagePrimaryKey(convID string) storage.PrimaryKey {
-	id := uuid.New().String()
-	return MessagePrimaryKey(convID, id)
 }
 
 func MessagePrimaryKey(convID, msgID string) storage.PrimaryKey {

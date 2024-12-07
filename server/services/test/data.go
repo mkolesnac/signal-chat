@@ -3,9 +3,9 @@ package test
 import (
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/google/uuid"
-	"signal-chat/cmd/server/models"
-	"signal-chat/cmd/server/storage"
-	"signal-chat/cmd/server/utils"
+	"signal-chat-server/models"
+	"signal-chat-server/storage"
+	"signal-chat-server/utils"
 )
 
 var testingIdentityPrivateKey = [32]byte(utils.RandomBytes(32))

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"signal-chat/cmd/server/models"
-	"signal-chat/cmd/server/services/test"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/models"
+	"signal-chat-server/services/test"
+	"signal-chat-server/storage"
 	"testing"
 )
 

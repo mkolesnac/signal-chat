@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"signal-chat/cmd/server/api"
-	"signal-chat/cmd/server/auth"
-	"signal-chat/cmd/server/services"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/api"
+	"signal-chat-server/auth"
+	"signal-chat-server/services"
+	"signal-chat-server/storage"
 )
 
 func main() {

@@ -5,7 +5,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
-	"signal-chat/cmd/server/services"
+	"signal-chat-server/services"
 )
 
 func BasicAuthMiddleware(accounts services.AccountService) func(username, password string, c echo.Context) (bool, error) {

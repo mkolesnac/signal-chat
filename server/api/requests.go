@@ -1,7 +1,7 @@
 package api
 
 import (
-	"signal-chat/cmd/server/models"
+	"signal-chat-server/models"
 )
 
 type CreateAccountRequest struct {

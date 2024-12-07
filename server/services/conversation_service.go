@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"signal-chat/cmd/server/models"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/models"
+	"signal-chat-server/storage"
 	"strings"
 )
 

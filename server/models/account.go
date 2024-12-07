@@ -2,7 +2,7 @@ package models
 
 import (
 	"github.com/google/uuid"
-	"signal-chat/cmd/server/storage"
+	"signal-chat-server/storage"
 	"strings"
 )
 
