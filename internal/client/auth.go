@@ -8,8 +8,8 @@ import (
 	"github.com/crossle/libsignal-protocol-go/state/record"
 	"github.com/crossle/libsignal-protocol-go/util/keyhelper"
 	"regexp"
-	"signal-chat/api"
-	"signal-chat/client/database"
+	"signal-chat/internal/api"
+	"signal-chat/internal/client/database"
 	"strconv"
 )
 

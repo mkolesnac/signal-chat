@@ -6,8 +6,8 @@ import (
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/stretchr/testify/assert"
 	"net/http"
-	"signal-chat/api"
-	"signal-chat/client/database"
+	"signal-chat/internal/api"
+	"signal-chat/internal/client/database"
 	"strings"
 	"testing"
 )
