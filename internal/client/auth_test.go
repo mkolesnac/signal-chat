@@ -12,9 +12,7 @@ import (
 	"testing"
 )
 
-var dummyAPIClient = &APIClient{HTTPClient: NewTestClient(func(req *http.Request) (*http.Response, error) {
-	return &http.Response{StatusCode: http.StatusOK}, nil
-})}
+var dummyAPIClient = &APIClient{httpClient: &http.Client{Transport: &SpyRoundTripper{}}}
 
 func TestSignUp(t *testing.T) {
 	t.Run("returns error if email is invalid", func(t *testing.T) {
@@ -43,39 +41,33 @@ func TestSignUp(t *testing.T) {
 		assertWritesInDatabase(t, db, database.PreKeyPK(""), 100)
 	})
 	t.Run("sends public keys to server", func(t *testing.T) {
-		sent := false
 		db := database.NewFakeDatabase()
-		client := NewTestClient(func(req *http.Request) (*http.Response, error) {
-			sent = true
-			assert.NotEmpty(t, req.Header.Get("Authorization"), "Authorization header should be set")
-
-			var got api.SignUpRequest
-			err := json.NewDecoder(req.Body).Decode(&got)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			assert.Equal(t, "test@user.com", got.Email)
-			assert.Equal(t, "password123", got.Password)
-			assert.Len(t, got.IdentityPublicKey, 33, "curve25519 public keys should be 33 bytes long")
-			assert.Equal(t, got.IdentityPublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
-			assert.Len(t, got.SignedPreKey.PublicKey, 33, "curve25519 public keys should be 33 bytes long")
-			assert.Equal(t, got.SignedPreKey.PublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
-			assert.Len(t, got.SignedPreKey.Signature, 64, "Signed prekey signature should be 64 byte long")
-			assert.Len(t, got.PreKeys, 100, "Request should contain 100 pre keys")
-			for _, preKey := range got.PreKeys {
-				assert.Len(t, preKey.PublicKey, 33, "curve25519 public keys should be 33 bytes long")
-				assert.Equal(t, preKey.PublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
-			}
-
-			return &http.Response{StatusCode: http.StatusOK}, nil
-		})
-		apiClient := &APIClient{HTTPClient: client}
+		spyTransport := &SpyRoundTripper{}
+		apiClient := &APIClient{httpClient: &http.Client{Transport: spyTransport}}
 		auth := Auth{db: db, apiClient: apiClient}
 		err := auth.SignUp("test@user.com", "password123")
 
 		assert.Nil(t, err)
-		assert.Truef(t, sent, "request should have been sent")
+		assert.NotNil(t, spyTransport.Request, "request should have been sent")
+		assert.NotEmpty(t, spyTransport.Request.Header.Get("Authorization"), "authorization header should be set")
+
+		var got api.SignUpRequest
+		err = json.NewDecoder(spyTransport.Request.Body).Decode(&got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, "test@user.com", got.Email)
+		assert.Equal(t, "password123", got.Password)
+		assert.Len(t, got.IdentityPublicKey, 33, "curve25519 public keys should be 33 bytes long")
+		assert.Equal(t, got.IdentityPublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
+		assert.Len(t, got.SignedPreKey.PublicKey, 33, "curve25519 public keys should be 33 bytes long")
+		assert.Equal(t, got.SignedPreKey.PublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
+		assert.Len(t, got.SignedPreKey.Signature, 64, "Signed prekey signature should be 64 byte long")
+		assert.Len(t, got.PreKeys, 100, "Request should contain 100 pre keys")
+		for _, preKey := range got.PreKeys {
+			assert.Len(t, preKey.PublicKey, 33, "curve25519 public keys should be 33 bytes long")
+			assert.Equal(t, preKey.PublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
+		}
 	})
 }
 
@@ -103,29 +95,23 @@ func TestSignIn(t *testing.T) {
 		assert.NotPanics(t, func() { _, _ = db.ReadValue(database.PrivateIdentityKeyPK()) }, "Read should not panic if database connection was opened")
 	})
 	t.Run("sends signin request to server", func(t *testing.T) {
-		sent := false
 		db := database.NewFakeDatabase()
-		client := NewTestClient(func(req *http.Request) (*http.Response, error) {
-			sent = true
-			assert.NotEmpty(t, req.Header.Get("Authorization"), "Authorization header should be set")
-
-			var got api.SignInRequest
-			err := json.NewDecoder(req.Body).Decode(&got)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			assert.Equal(t, "test@user.com", got.Email)
-			assert.Equal(t, "password123", got.Password)
-
-			return &http.Response{StatusCode: http.StatusOK}, nil
-		})
-		apiClient := &APIClient{HTTPClient: client}
+		spyTransport := &SpyRoundTripper{}
+		apiClient := &APIClient{httpClient: &http.Client{Transport: spyTransport}}
 		auth := Auth{db: db, apiClient: apiClient}
 		err := auth.SignIn("test@user.com", "password123")
 
 		assert.Nil(t, err)
-		assert.Truef(t, sent, "request should have been sent")
+		assert.NotNil(t, spyTransport.Request, "request should have been sent")
+		assert.NotEmpty(t, spyTransport.Request.Header.Get("Authorization"), "authorization header should be set")
+
+		var got api.SignInRequest
+		err = json.NewDecoder(spyTransport.Request.Body).Decode(&got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assert.Equal(t, "test@user.com", got.Email)
+		assert.Equal(t, "password123", got.Password)
 	})
 }
 
@@ -151,10 +137,9 @@ func TestSignOut(t *testing.T) {
 	})
 	t.Run("removes authentication from api client", func(t *testing.T) {
 		db := database.NewFakeDatabase()
-		apiClient := APIClient{HTTPClient: NewTestClient(func(req *http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: http.StatusOK}, nil
-		})}
-		auth := Auth{db: db, apiClient: &apiClient}
+		spyTransport := &SpyRoundTripper{}
+		apiClient := &APIClient{httpClient: &http.Client{Transport: spyTransport}}
+		auth := Auth{db: db, apiClient: apiClient}
 		err := auth.SignIn("test@user.com", "password123")
 		if err != nil {
 			t.Fatal(err)
@@ -165,7 +150,7 @@ func TestSignOut(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		assert.Empty(t, apiClient.Authorization)
+		assert.Empty(t, apiClient.authorization)
 	})
 }
 

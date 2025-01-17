@@ -4,20 +4,11 @@ import (
 	"net/http"
 )
 
-type MockRoundTripper struct {
-	roundTripFunc func(req *http.Request) (*http.Response, error)
-	WasCalled     bool
+type SpyRoundTripper struct {
+	Request *http.Request
 }
 
-func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	m.WasCalled = true
-	return m.roundTripFunc(req)
-}
-
-func NewTestClient(roundTripFunc func(req *http.Request) (*http.Response, error)) *http.Client {
-	return &http.Client{
-		Transport: &MockRoundTripper{
-			roundTripFunc: roundTripFunc,
-		},
-	}
+func (s *SpyRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.Request = req
+	return &http.Response{StatusCode: http.StatusOK}, nil
 }

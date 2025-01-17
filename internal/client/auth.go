@@ -127,7 +127,7 @@ func (a *Auth) SignOut() error {
 	if err != nil {
 		return fmt.Errorf("failed to close database: %w", err)
 	}
-	a.apiClient.Authorization = ""
+	a.apiClient.authorization = ""
 
 	return nil
 }
