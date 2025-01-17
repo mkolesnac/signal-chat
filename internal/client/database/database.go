@@ -10,15 +10,15 @@ import (
 
 var ErrNotInitialized = errors.New("database is already initialized. Use Open() function to open a database connection")
 
-type database interface {
-	Open(userID string) error
-	Close() error
-	ReadValue(pk PrimaryKey) ([]byte, error)
-	WriteValue(pk PrimaryKey, v []byte) error
+type Database struct {
+	db       *badger.DB
+	BasePath string
 }
 
-type Database struct {
-	db *badger.DB
+func NewDatabase() *Database {
+	return &Database{
+		BasePath: filepath.Join(".", "data"),
+	}
 }
 
 func (u *Database) Open(userID string) error {
@@ -28,12 +28,15 @@ func (u *Database) Open(userID string) error {
 		}
 	}
 
-	path := filepath.Join(".", "data", userID, "badger.db")
+	path := filepath.Join(u.BasePath, userID)
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return fmt.Errorf("failed to create user database directory: %w", err)
 	}
 
 	opts := badger.DefaultOptions(path).WithLoggingLevel(badger.WARNING)
+	opts.ValueLogFileSize = 32 << 20 // 32 MB
+	opts.IndexCacheSize = 16 << 20
+	opts.SyncWrites = true // TODO: test performance
 	db, err := badger.Open(opts)
 	if err != nil {
 		return fmt.Errorf("failed to open Database: %w", err)
@@ -121,9 +124,6 @@ func (u *Database) WriteValue(pk PrimaryKey, value []byte) error {
 
 func (u *Database) DeleteValue(pk PrimaryKey) error {
 	u.panicIfNotInitialized()
-	if len(pk) == 0 {
-		return fmt.Errorf("pk cannot be empty")
-	}
 
 	err := u.db.Update(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(pk))
