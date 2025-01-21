@@ -10,6 +10,13 @@ import (
 
 var ErrNotInitialized = errors.New("database is already initialized. Use Open() function to open a database connection")
 
+type Store interface {
+	ReadValue(pk PrimaryKey) ([]byte, error)
+	WriteValue(pk PrimaryKey, value []byte) error
+	QueryValues(prefix PrimaryKey) (map[string][]byte, error)
+	DeleteValue(pk PrimaryKey) error
+}
+
 type Database struct {
 	db       *badger.DB
 	BasePath string
@@ -81,7 +88,7 @@ func (u *Database) ReadValue(pk PrimaryKey) ([]byte, error) {
 	return bytes, nil
 }
 
-func (u *Database) QueryValues(prefix string) (map[string][]byte, error) {
+func (u *Database) QueryValues(prefix PrimaryKey) (map[string][]byte, error) {
 	u.panicIfNotInitialized()
 	if len(prefix) == 0 {
 		return nil, fmt.Errorf("prefix cannot be empty")

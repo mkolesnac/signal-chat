@@ -1,6 +1,8 @@
 package database
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type PrimaryKey string
 
@@ -18,4 +20,10 @@ func SignedPreKeyPK(id string) PrimaryKey {
 
 func PreKeyPK(id string) PrimaryKey {
 	return PrimaryKey(fmt.Sprintf("preKey#%s", id))
+}
+
+func ConversationPK(id string) PrimaryKey { return PrimaryKey(fmt.Sprintf("conversation#%s", id)) }
+
+func MessagePK(conversationID, messageID string) PrimaryKey {
+	return PrimaryKey(fmt.Sprintf("message#%s:%s", conversationID, messageID))
 }
