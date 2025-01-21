@@ -30,7 +30,7 @@ func TestSignUp(t *testing.T) {
 		assert.ErrorIs(t, err, ErrAuthPwdTooShort)
 	})
 	t.Run("generates key pairs and writes them to db", func(t *testing.T) {
-		db := database.NewFakeDatabase()
+		db := database.NewFake()
 		auth := Auth{db: db, apiClient: dummyAPIClient}
 		err := auth.SignUp("test", "password123")
 
@@ -41,7 +41,7 @@ func TestSignUp(t *testing.T) {
 		assertWritesInDatabase(t, db, database.PreKeyPK(""), 100)
 	})
 	t.Run("sends public keys to server", func(t *testing.T) {
-		db := database.NewFakeDatabase()
+		db := database.NewFake()
 		spyTransport := &SpyRoundTripper{}
 		apiClient := &APIClient{httpClient: &http.Client{Transport: spyTransport}}
 		auth := Auth{db: db, apiClient: apiClient}
@@ -87,7 +87,7 @@ func TestSignIn(t *testing.T) {
 		assert.ErrorIs(t, err, ErrAuthPwdTooShort)
 	})
 	t.Run("opens database connection", func(t *testing.T) {
-		db := database.NewFakeDatabase()
+		db := database.NewFake()
 		auth := Auth{db: db, apiClient: dummyAPIClient}
 		err := auth.SignIn("test", "password123")
 
@@ -95,7 +95,7 @@ func TestSignIn(t *testing.T) {
 		assert.NotPanics(t, func() { _, _ = db.ReadValue(database.PrivateIdentityKeyPK()) }, "Read should not panic if database connection was opened")
 	})
 	t.Run("sends signin request to server", func(t *testing.T) {
-		db := database.NewFakeDatabase()
+		db := database.NewFake()
 		spyTransport := &SpyRoundTripper{}
 		apiClient := &APIClient{httpClient: &http.Client{Transport: spyTransport}}
 		auth := Auth{db: db, apiClient: apiClient}
@@ -121,7 +121,7 @@ func TestSignOut(t *testing.T) {
 		assert.Panics(t, func() { _ = auth.SignOut() }, "Should panic if no user is signed in")
 	})
 	t.Run("closes database connection", func(t *testing.T) {
-		db := database.NewFakeDatabase()
+		db := database.NewFake()
 		auth := Auth{db: db, apiClient: dummyAPIClient}
 		err := auth.SignIn("test@user.com", "password123")
 		if err != nil {
@@ -136,7 +136,7 @@ func TestSignOut(t *testing.T) {
 		assert.Panics(t, func() { _, _ = db.ReadValue(database.PrivateIdentityKeyPK()) }, "Read should panic because database connection was closed")
 	})
 	t.Run("removes authentication from api client", func(t *testing.T) {
-		db := database.NewFakeDatabase()
+		db := database.NewFake()
 		spyTransport := &SpyRoundTripper{}
 		apiClient := &APIClient{httpClient: &http.Client{Transport: spyTransport}}
 		auth := Auth{db: db, apiClient: apiClient}
@@ -154,7 +154,7 @@ func TestSignOut(t *testing.T) {
 	})
 }
 
-func assertWritesInDatabase(t *testing.T, db *database.FakeDatabase, prefix database.PrimaryKey, targetCount int) {
+func assertWritesInDatabase(t *testing.T, db *database.Fake, prefix database.PrimaryKey, targetCount int) {
 	t.Helper()
 
 	count := 0

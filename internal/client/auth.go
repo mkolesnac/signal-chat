@@ -16,19 +16,19 @@ import (
 var ErrAuthInvalidEmail = errors.New("email is not a valid email address")
 var ErrAuthPwdTooShort = errors.New("password too short")
 
-type DBConnector interface {
+type AuthDatabase interface {
 	Open(userID string) error
 	Close() error
 	WriteValue(pk database.PrimaryKey, value []byte) error
 }
 
 type Auth struct {
-	db        DBConnector
+	db        AuthDatabase
 	apiClient *APIClient
 	signedIn  bool
 }
 
-func NewAuth(db DBConnector, apiClient *APIClient) *Auth {
+func NewAuth(db AuthDatabase, apiClient *APIClient) *Auth {
 	return &Auth{db: db, apiClient: apiClient}
 }
 
