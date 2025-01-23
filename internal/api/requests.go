@@ -1,7 +1,7 @@
 package api
 
 type SignUpRequest struct {
-	Email             string       `json:"email" validate:"required"`
+	UserName          string       `json:"username" validate:"required"`
 	Password          string       `json:"password" validate:"required"`
 	IdentityPublicKey []byte       `json:"identityKey" validate:"required,32bytes"`
 	SignedPreKey      SignedPreKey `json:"signedPreKey" validate:"required"`
@@ -9,7 +9,7 @@ type SignUpRequest struct {
 }
 
 type SignInRequest struct {
-	Email    string `json:"email" validate:"required"`
+	Username string `json:"username" validate:"required"`
 	Password string `json:"password" validate:"required"`
 }
 
