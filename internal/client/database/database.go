@@ -11,10 +11,10 @@ import (
 var ErrNotInitialized = errors.New("database is already initialized. Use Open() function to open a database connection")
 
 type Store interface {
-	ReadValue(pk PrimaryKey) ([]byte, error)
-	WriteValue(pk PrimaryKey, value []byte) error
-	QueryValues(prefix PrimaryKey) (map[string][]byte, error)
-	DeleteValue(pk PrimaryKey) error
+	Read(pk PrimaryKey) ([]byte, error)
+	Write(pk PrimaryKey, value []byte) error
+	Query(prefix PrimaryKey) (map[string][]byte, error)
+	Delete(pk PrimaryKey) error
 }
 
 type Database struct {
@@ -63,7 +63,7 @@ func (u *Database) Close() error {
 	return nil
 }
 
-func (u *Database) ReadValue(pk PrimaryKey) ([]byte, error) {
+func (u *Database) Read(pk PrimaryKey) ([]byte, error) {
 	u.panicIfNotInitialized()
 
 	var bytes []byte
@@ -88,7 +88,7 @@ func (u *Database) ReadValue(pk PrimaryKey) ([]byte, error) {
 	return bytes, nil
 }
 
-func (u *Database) QueryValues(prefix PrimaryKey) (map[string][]byte, error) {
+func (u *Database) Query(prefix PrimaryKey) (map[string][]byte, error) {
 	u.panicIfNotInitialized()
 	if len(prefix) == 0 {
 		return nil, fmt.Errorf("prefix cannot be empty")
@@ -116,7 +116,7 @@ func (u *Database) QueryValues(prefix PrimaryKey) (map[string][]byte, error) {
 	return items, err
 }
 
-func (u *Database) WriteValue(pk PrimaryKey, value []byte) error {
+func (u *Database) Write(pk PrimaryKey, value []byte) error {
 	u.panicIfNotInitialized()
 
 	err := u.db.Update(func(txn *badger.Txn) error {
@@ -129,7 +129,7 @@ func (u *Database) WriteValue(pk PrimaryKey, value []byte) error {
 	return nil
 }
 
-func (u *Database) DeleteValue(pk PrimaryKey) error {
+func (u *Database) Delete(pk PrimaryKey) error {
 	u.panicIfNotInitialized()
 
 	err := u.db.Update(func(txn *badger.Txn) error {

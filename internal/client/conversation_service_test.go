@@ -3,11 +3,12 @@ package client
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"signal-chat/internal/client/database"
 	"testing"
 )
 
-const DummyUser = "user#dummy"
+const DummyUser = "dummy"
 const DummyText = "Hello there!"
 
 func TestConversationService_ListConversations(t *testing.T) {
@@ -16,11 +17,11 @@ func TestConversationService_ListConversations(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		conv1, err := svc.CreateConversation("First message", "user#1", "user#2")
+		conv1, err := svc.CreateConversation("First message", "alice", "bob")
 		if err != nil {
 			t.Fatal(err)
 		}
-		conv2, err := svc.CreateConversation("First message", "user#1", "user#3")
+		conv2, err := svc.CreateConversation("First message", "alice", "tom")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,7 +52,7 @@ func TestConversationService_ListConversations(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
-		_ = db.WriteValue(database.ConversationPK("abc"), []byte("invalid"))
+		_ = db.Write(database.ConversationPK("abc"), []byte("invalid"))
 		service := NewConversationService(db)
 
 		// Act
@@ -81,8 +82,8 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		senderID := "user#1"
-		recipientID := "user#2"
+		senderID := "alice"
+		recipientID := "bob"
 		messageText := "Hello there!"
 
 		// Act
@@ -104,8 +105,8 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		senderID := "user#1"
-		recipientID := "user#2"
+		senderID := "alice"
+		recipientID := "bob"
 		messageText := "Hello there!"
 
 		// Act
@@ -125,8 +126,8 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		svc := NewConversationService(db)
 
 		// Act
-		conv1, err1 := svc.CreateConversation("First message", "user#1", "user#2")
-		conv2, err2 := svc.CreateConversation("First message", "user#1", "user#3")
+		conv1, err1 := svc.CreateConversation("First message", "alice", "bob")
+		conv2, err2 := svc.CreateConversation("First message", "alice", "tom")
 
 		// Assert
 		assert.NoError(t, err1)
@@ -141,7 +142,7 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		svc := NewConversationService(db)
 
 		// Act
-		_, err := svc.CreateConversation("Initial message", "user#1", "user#2")
+		_, err := svc.CreateConversation("Initial message", "alice", "bob")
 
 		// Assert
 		assert.Error(t, err)
@@ -157,19 +158,19 @@ func TestConversationService_CreateConversation(t *testing.T) {
 			{
 				name:        "empty message text",
 				messageText: "",
-				senderID:    "user#1",
-				recipientID: "user#2",
+				senderID:    "alice",
+				recipientID: "bob",
 			},
 			{
 				name:        "empty sender ID",
 				messageText: "Hello",
 				senderID:    "",
-				recipientID: "user#2",
+				recipientID: "bob",
 			},
 			{
 				name:        "empty recipient ID",
 				messageText: "Hello",
-				senderID:    "user#1",
+				senderID:    "alice",
 				recipientID: "",
 			},
 		}
@@ -194,18 +195,18 @@ func TestConversationService_SendMessage(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "user#1", "user#2")
+		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// Act
-		msg, err := svc.SendMessage(conv.ID, "Second message", "user#2")
+		msg, err := svc.SendMessage(conv.ID, "Second message", "bob")
 
 		// Assert
 		assert.NoError(t, err)
 		assert.Equal(t, "Second message", msg.Text)
-		assert.Equal(t, "user#2", msg.SenderID)
+		assert.Equal(t, "bob", msg.SenderID)
 		assert.Equal(t, conv.ID, msg.ConversationID)
 		messages, err := svc.ListMessages(conv.ID)
 		assert.NoError(t, err)
@@ -216,14 +217,14 @@ func TestConversationService_SendMessage(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "user#1", "user#2")
+		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// Act
-		msg1, err1 := svc.SendMessage(conv.ID, "First message", "user#2")
-		msg2, err2 := svc.SendMessage(conv.ID, "Second message", "user#2")
+		msg1, err1 := svc.SendMessage(conv.ID, "First message", "bob")
+		msg2, err2 := svc.SendMessage(conv.ID, "Second message", "bob")
 
 		// Assert
 		assert.NoError(t, err1)
@@ -239,7 +240,7 @@ func TestConversationService_SendMessage(t *testing.T) {
 		svc := NewConversationService(db)
 
 		// Act
-		_, err := svc.SendMessage("conv#123", "Second message", "user#2")
+		_, err := svc.SendMessage("123", "Second message", "bob")
 
 		// Assert
 		assert.Error(t, err)
@@ -247,14 +248,15 @@ func TestConversationService_SendMessage(t *testing.T) {
 	t.Run("returns error when database write fails", func(t *testing.T) {
 		// Arrange
 		db := database.NewStub()
-		id := "conversation#123"
-		convBytes, _ := (&Conversation{ID: id}).Serialize()
-		db.Items[database.ConversationPK(id)] = convBytes
+		id := "123"
+		key := string(database.ConversationPK(id))
+		bytes, _ := (&Conversation{ID: id}).Serialize()
+		db.QueryResult = map[string][]byte{key: bytes}
 		db.WriteErr = errors.New("write error")
 		svc := NewConversationService(db)
 
 		// Act
-		_, err := svc.SendMessage(id, "Initial message", "user#1")
+		_, err := svc.SendMessage(id, "Initial message", "alice")
 
 		// Assert
 		assert.Error(t, err)
@@ -264,7 +266,7 @@ func TestConversationService_SendMessage(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "user#1", "user#2")
+		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -279,13 +281,13 @@ func TestConversationService_SendMessage(t *testing.T) {
 				name:           "empty conversation ID",
 				conversationID: "",
 				messageText:    "Hello",
-				senderID:       "user#1",
+				senderID:       "alice",
 			},
 			{
 				name:           "empty message text",
 				conversationID: conv.ID,
 				messageText:    "",
-				senderID:       "user#1",
+				senderID:       "alice",
 			},
 			{
 				name:           "empty sender ID",
@@ -311,11 +313,11 @@ func TestConversationService_ListMessages(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyUser)
 		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "user#1", "user#2")
+		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
 		if err != nil {
 			t.Fatal(err)
 		}
-		msg, err := svc.SendMessage(conv.ID, "Second message", "user#1")
+		msg, err := svc.SendMessage(conv.ID, "Second message", "alice")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -346,7 +348,7 @@ func TestConversationService_ListMessages(t *testing.T) {
 		svc := NewConversationService(db)
 
 		// Act
-		messages, err := svc.ListMessages("conv#1")
+		messages, err := svc.ListMessages("123")
 
 		// Assert
 		assert.Error(t, err)
@@ -354,12 +356,15 @@ func TestConversationService_ListMessages(t *testing.T) {
 	})
 	t.Run("returns error when database query fails", func(t *testing.T) {
 		// Arrange
-		db := &database.Stub{QueryErr: errors.New("query err")}
-		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "user#1", "user#2")
-		if err != nil {
-			t.Fatal(err)
+		conv := Conversation{ID: "acb"}
+		bytes, err := conv.Serialize()
+		require.NoError(t, err)
+		db := &database.Stub{
+			ReadResult: bytes,
+			QueryErr:   errors.New("query err"),
 		}
+		svc := NewConversationService(db)
+		require.NoError(t, err)
 
 		// Act
 		got, err := svc.ListMessages(conv.ID)

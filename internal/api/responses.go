@@ -1,5 +1,13 @@
 package api
 
+type SignUpResponse struct {
+	UserID string `json:"userId"`
+}
+
+type SignInResponse struct {
+	UserID string `json:"userId"`
+}
+
 type CreateUserResponse struct {
 	ID string `json:"id"`
 }

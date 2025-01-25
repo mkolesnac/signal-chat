@@ -28,7 +28,7 @@ func TestDatabase_OpenIntegration(t *testing.T) {
 		got := filepath.Join(tf, "123")
 		assert.DirExists(t, got, "database directory should have been created")
 
-		err = db.WriteValue("test", []byte("test"))
+		err = db.Write("test", []byte("test"))
 		assert.NoError(t, err, "should be able to write to the opened database")
 	})
 }
@@ -38,7 +38,7 @@ func TestDatabase_WriteValue(t *testing.T) {
 		// Arrange
 		db := database.NewDatabase()
 		// Act & Assert
-		assert.Panics(t, func() { _ = db.WriteValue("123", []byte("test")) })
+		assert.Panics(t, func() { _ = db.Write("123", []byte("test")) })
 	})
 }
 
@@ -59,18 +59,18 @@ func TestDatabase_WriteValueIntegration(t *testing.T) {
 		}
 
 		// Act
-		err = db.WriteValue("key1", []byte("initial"))
+		err = db.Write("key1", []byte("initial"))
 
 		// Assert
 		assert.NoError(t, err)
-		got, err := db.ReadValue("key1")
+		got, err := db.Read("key1")
 		assert.NoError(t, err)
 		assert.Equal(t, "initial", string(got))
 
-		err = db.WriteValue("key1", []byte("updated"))
+		err = db.Write("key1", []byte("updated"))
 		assert.NoError(t, err)
 
-		got, err = db.ReadValue("key1")
+		got, err = db.Read("key1")
 		assert.NoError(t, err)
 		assert.Equal(t, "updated", string(got))
 	})
@@ -81,7 +81,7 @@ func TestDatabase_ReadValue(t *testing.T) {
 		// Arrange
 		db := database.NewDatabase()
 		// Act&Assert
-		assert.Panics(t, func() { _, _ = db.ReadValue("123") })
+		assert.Panics(t, func() { _, _ = db.Read("123") })
 	})
 }
 
@@ -102,7 +102,7 @@ func TestDatabase_ReadValueIntegration(t *testing.T) {
 		}
 
 		// Act
-		got, err := db.ReadValue("123")
+		got, err := db.Read("123")
 
 		// Assert
 		assert.NoError(t, err)
@@ -120,11 +120,11 @@ func TestDatabase_ReadValueIntegration(t *testing.T) {
 		}
 
 		// Act
-		err = db.WriteValue("empty-key", []byte{})
+		err = db.Write("empty-key", []byte{})
 
 		// Assert
 		assert.NoError(t, err)
-		got, err := db.ReadValue("empty-key")
+		got, err := db.Read("empty-key")
 		assert.NoError(t, err)
 		assert.Empty(t, got)
 	})
@@ -135,7 +135,7 @@ func TestDatabase_QueryValues(t *testing.T) {
 		// Arrange
 		db := database.NewDatabase()
 		// Act&Assert
-		assert.Panics(t, func() { _, _ = db.QueryValues("123") })
+		assert.Panics(t, func() { _, _ = db.Query("123") })
 	})
 }
 
@@ -156,7 +156,7 @@ func TestDatabase_QueryValuesIntegration(t *testing.T) {
 		}
 
 		// Act
-		got, err := db.QueryValues("")
+		got, err := db.Query("")
 
 		// Assert
 		assert.Error(t, err)
@@ -169,7 +169,7 @@ func TestDatabase_DeleteValue(t *testing.T) {
 		// Arrange
 		db := database.NewDatabase()
 		// Act&Assert
-		assert.Panics(t, func() { _ = db.DeleteValue("123") })
+		assert.Panics(t, func() { _ = db.Delete("123") })
 	})
 }
 
@@ -190,7 +190,7 @@ func TestDatabase_DeleteValueIntegration(t *testing.T) {
 		}
 
 		// Act
-		err = db.DeleteValue("non-existent")
+		err = db.Delete("non-existent")
 
 		// Assert
 		assert.NoError(t, err)
@@ -206,17 +206,17 @@ func TestDatabase_DeleteValueIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = db.WriteValue("key1", []byte("value1"))
+		err = db.Write("key1", []byte("value1"))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		// Act
-		err = db.DeleteValue("key1")
+		err = db.Delete("key1")
 
 		// Assert
 		assert.NoError(t, err)
-		value, err := db.ReadValue("key1")
+		value, err := db.Read("key1")
 		assert.NoError(t, err)
 		assert.Nil(t, value)
 	})

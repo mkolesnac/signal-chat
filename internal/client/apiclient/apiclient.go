@@ -2,7 +2,6 @@ package apiclient
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,29 +10,37 @@ import (
 )
 
 type Client interface {
+	// Get performs a GET request and unmarshals the response into target.
+	// The target must be a pointer to a value that can be unmarshalled from JSON.
 	Get(route string, target any) (int, error)
-	Post(route string, payload any) (int, error)
+
+	// Post performs a POST request with the given payload and unmarshals the response into target.
+	// The target must be a pointer to a value that can be unmarshalled from JSON.
+	Post(route string, payload any, target any) (int, error)
 }
 
 type APIClient struct {
 	ServerURL     string
 	authorization string
-	httpClient    *http.Client
+	HttpClient    *http.Client
 }
 
 func NewAPIClient(serverURL string) *APIClient {
 	return &APIClient{
 		ServerURL:  serverURL,
-		httpClient: &http.Client{},
+		HttpClient: &http.Client{},
 	}
 }
 
-func (a *APIClient) UseBasicAuth(username, password string) {
+func (a *APIClient) SetAuthorization(username, password string) {
 	requireNonEmpty("username", username)
 	requireNonEmpty("password", password)
 
-	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-	a.authorization = "Basic " + credentials
+	a.authorization = basicAuthorization(username, password)
+}
+
+func (a *APIClient) ClearAuthorization() {
+	a.authorization = ""
 }
 
 func (a *APIClient) Get(route string, target any) (int, error) {
@@ -81,7 +88,7 @@ func (a *APIClient) newRequest(method, route string, payload []byte) (*http.Requ
 }
 
 func (a *APIClient) send(req *http.Request, target any) (int, error) {
-	resp, err := a.httpClient.Do(req)
+	resp, err := a.HttpClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("error sending request: %w", err)
 	}

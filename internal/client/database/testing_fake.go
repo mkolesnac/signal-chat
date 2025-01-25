@@ -24,18 +24,18 @@ func (f *Fake) Close() error {
 	return nil
 }
 
-func (f *Fake) ReadValue(pk PrimaryKey) ([]byte, error) {
+func (f *Fake) Read(pk PrimaryKey) ([]byte, error) {
 	f.panicIfNotOpened()
 	return f.Items[pk], nil
 }
 
-func (f *Fake) WriteValue(pk PrimaryKey, value []byte) error {
+func (f *Fake) Write(pk PrimaryKey, value []byte) error {
 	f.panicIfNotOpened()
 	f.Items[pk] = value
 	return nil
 }
 
-func (f *Fake) QueryValues(prefix PrimaryKey) (map[string][]byte, error) {
+func (f *Fake) Query(prefix PrimaryKey) (map[string][]byte, error) {
 	prefixStr := string(prefix)
 	result := make(map[string][]byte)
 	for k, v := range f.Items {
@@ -46,7 +46,7 @@ func (f *Fake) QueryValues(prefix PrimaryKey) (map[string][]byte, error) {
 	return result, nil
 }
 
-func (f *Fake) DeleteValue(pk PrimaryKey) error {
+func (f *Fake) Delete(pk PrimaryKey) error {
 	f.panicIfNotOpened()
 	delete(f.Items, pk)
 	return nil

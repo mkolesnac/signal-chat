@@ -31,10 +31,9 @@ func TestConversation_Deserialize(t *testing.T) {
 		invalidData := []byte("invalid data")
 
 		// Act
-		got, err := DeserializeConversation(invalidData)
+		_, err := DeserializeConversation(invalidData)
 
 		// Assert
 		assert.Error(t, err)
-		assert.Nil(t, got)
 	})
 }

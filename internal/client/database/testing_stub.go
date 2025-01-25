@@ -1,19 +1,18 @@
 package database
 
 type Stub struct {
-	OpenErr   error
-	CloseErr  error
-	ReadErr   error
-	WriteErr  error
-	QueryErr  error
-	DeleteErr error
-	Items     map[PrimaryKey][]byte
+	OpenErr     error
+	CloseErr    error
+	ReadErr     error
+	WriteErr    error
+	QueryErr    error
+	DeleteErr   error
+	ReadResult  []byte
+	QueryResult map[string][]byte
 }
 
 func NewStub() *Stub {
-	return &Stub{
-		Items: make(map[PrimaryKey][]byte),
-	}
+	return &Stub{}
 }
 
 func (s *Stub) Open(userID string) error {
@@ -24,24 +23,24 @@ func (s *Stub) Close() error {
 	return s.CloseErr
 }
 
-func (s *Stub) ReadValue(pk PrimaryKey) ([]byte, error) {
+func (s *Stub) Read(pk PrimaryKey) ([]byte, error) {
 	if s.ReadErr != nil {
-		return nil, s.ReadErr
+		return s.ReadResult, s.ReadErr
 	}
-	return []byte("stub data"), nil
+	return s.ReadResult, nil
 }
 
-func (s *Stub) WriteValue(pk PrimaryKey, value []byte) error {
+func (s *Stub) Write(pk PrimaryKey, value []byte) error {
 	return s.WriteErr
 }
 
-func (s *Stub) QueryValues(prefix PrimaryKey) (map[string][]byte, error) {
+func (s *Stub) Query(prefix PrimaryKey) (map[string][]byte, error) {
 	if s.QueryErr != nil {
-		return nil, s.QueryErr
+		return s.QueryResult, s.QueryErr
 	}
-	return map[string][]byte{"stub": []byte("data")}, nil
+	return s.QueryResult, nil
 }
 
-func (s *Stub) DeleteValue(pk PrimaryKey) error {
+func (s *Stub) Delete(pk PrimaryKey) error {
 	return s.DeleteErr
 }

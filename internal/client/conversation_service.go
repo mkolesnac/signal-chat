@@ -15,7 +15,7 @@ func NewConversationService(db database.Store) *ConversationService {
 }
 
 func (c *ConversationService) ListConversations() ([]Conversation, error) {
-	data, err := c.db.QueryValues(database.ConversationPK(""))
+	data, err := c.db.Query(database.ConversationPK(""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query conversations: %w", err)
 	}
@@ -40,7 +40,7 @@ func (c *ConversationService) ListMessages(conversationID string) ([]Message, er
 		return nil, err
 	}
 
-	data, err := c.db.QueryValues(database.MessagePK(conversationID, ""))
+	data, err := c.db.Query(database.MessagePK(conversationID, ""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query messages: %w", err)
 	}
@@ -73,7 +73,7 @@ func (c *ConversationService) CreateConversation(messageText, senderID, recipien
 	if err != nil {
 		return Conversation{}, fmt.Errorf("failed to serialize conversation: %w", err)
 	}
-	err = c.db.WriteValue(database.ConversationPK(conv.ID), bytes)
+	err = c.db.Write(database.ConversationPK(conv.ID), bytes)
 	if err != nil {
 		return Conversation{}, fmt.Errorf("failed to write conversation: %w", err)
 	}
@@ -108,7 +108,7 @@ func (c *ConversationService) SendMessage(conversationID, messageText, senderID 
 		return Message{}, fmt.Errorf("failed to serialize message: %w", err)
 	}
 
-	err = c.db.WriteValue(database.MessagePK(conversationID, msg.ID), bytes)
+	err = c.db.Write(database.MessagePK(conversationID, msg.ID), bytes)
 	if err != nil {
 		return Message{}, fmt.Errorf("failed to write message: %w", err)
 	}
@@ -128,7 +128,7 @@ func requireNonEmpty(name, value string) {
 }
 
 func (c *ConversationService) checkIfConversationExists(conversationID string) error {
-	conv, err := c.db.ReadValue(database.ConversationPK(conversationID))
+	conv, err := c.db.Read(database.ConversationPK(conversationID))
 	if err != nil {
 		return fmt.Errorf("failed to read conversation: %w", err)
 	}
