@@ -1,9 +1,9 @@
-package client
+package main
 
 import (
 	"fmt"
 	"github.com/google/uuid"
-	"signal-chat/internal/client/database"
+	"signal-chat/client/database"
 )
 
 type ConversationService struct {

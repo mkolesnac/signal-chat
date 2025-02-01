@@ -123,7 +123,7 @@ func TestMemoryStore_UpdateItem(t *testing.T) {
 		memStore := NewMemoryStore()
 
 		// Act
-		err := memStore.UpdateItem("pk#1", "sk#1", map[string]interface{}{"Email": "test"})
+		err := memStore.UpdateItem("pk#1", "sk#1", map[string]interface{}{"UserName": "test"})
 
 		// Assert
 		assert.Error(t, err)
@@ -147,7 +147,7 @@ func TestMemoryStore_UpdateItem(t *testing.T) {
 		memStore.resources = append(memStore.resources, testResources...)
 
 		// Act
-		err := memStore.UpdateItem("acc#123", "acc#123", map[string]interface{}{"Email": 1})
+		err := memStore.UpdateItem("acc#123", "acc#123", map[string]interface{}{"UserName": 1})
 
 		// Assert
 		assert.Error(t, err)

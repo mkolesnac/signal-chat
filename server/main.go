@@ -1,12 +1,11 @@
-package server
+package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"signal-chat/internal/server/handlers"
 	"signal-chat/server/auth"
+	"signal-chat/server/handlers"
 	"signal-chat/server/services"
 	"signal-chat/server/storage"
 )
@@ -16,7 +15,7 @@ type Options struct {
 	Port int
 }
 
-func Run(ctx context.Context, options *Options) {
+func main() {
 	backend := storage.NewMemoryStore()
 	accounts := services.NewAccountService(backend)
 	websockets := services.NewWebsocketManager()

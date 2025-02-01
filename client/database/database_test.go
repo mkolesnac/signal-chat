@@ -4,7 +4,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
-	"signal-chat/internal/client/database"
+	"signal-chat/client/database"
 	"testing"
 )
 

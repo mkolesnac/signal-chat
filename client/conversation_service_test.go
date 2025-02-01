@@ -1,10 +1,10 @@
-package client
+package main
 
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"signal-chat/internal/client/database"
+	"signal-chat/client/database"
 	"testing"
 )
 
@@ -96,7 +96,7 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		assert.Contains(t, conv.ParticipantIDs, senderID, "sender should be a conversation participant")
 		assert.Contains(t, conv.ParticipantIDs, recipientID, "recipient should be a conversation participant")
 		conversations, err := svc.ListConversations()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, conversations, 1, "only one conversation should be created")
 		assert.Contains(t, conversations, conv, "conversation should be retrievable after it was created")
 	})
@@ -209,8 +209,32 @@ func TestConversationService_SendMessage(t *testing.T) {
 		assert.Equal(t, "bob", msg.SenderID)
 		assert.Equal(t, conv.ID, msg.ConversationID)
 		messages, err := svc.ListMessages(conv.ID)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Contains(t, messages, msg)
+	})
+	t.Run("updates conversation last message", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyUser)
+		svc := NewConversationService(db)
+		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Act
+		msg, err := svc.SendMessage(conv.ID, "Second message", "bob")
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Equal(t, "Second message", msg.Text)
+		assert.Equal(t, "bob", msg.SenderID)
+		assert.Equal(t, conv.ID, msg.ConversationID)
+		conversations, err := svc.ListConversations()
+		require.NoError(t, err)
+		assert.Contains(t, msg.Text, conversations[0].LastMessagePreview, "Last message preview in conversation should have been updated")
+		assert.True(t, msg.Timestamp.Equal(conversations[0].LastMessageTimestamp), "Last message timestamp in conversation should have been updated")
+		assert.Equal(t, msg.SenderID, conversations[0].LastMessageSenderID, "Last message sender ID in conversation should have been updated")
 	})
 	t.Run("creates messages with unique IDs", func(t *testing.T) {
 		// Arrange

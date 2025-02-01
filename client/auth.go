@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"encoding/base64"
@@ -10,9 +10,9 @@ import (
 	"github.com/crossle/libsignal-protocol-go/util/keyhelper"
 	"net/http"
 	"regexp"
+	"signal-chat/client/apiclient"
+	"signal-chat/client/database"
 	"signal-chat/internal/api"
-	"signal-chat/internal/client/apiclient"
-	"signal-chat/internal/client/database"
 	"strconv"
 )
 
@@ -101,8 +101,8 @@ func (a *Auth) SignUp(email, pwd string) (User, error) {
 
 	a.signedIn = true
 	user := User{
-		ID:    resp.UserID,
-		Email: email,
+		ID:       resp.UserID,
+		Username: email,
 	}
 	return user, nil
 }
@@ -138,8 +138,8 @@ func (a *Auth) SignIn(email, pwd string) (User, error) {
 
 	a.signedIn = true
 	user := User{
-		ID:    resp.UserID,
-		Email: email,
+		ID:       resp.UserID,
+		Username: email,
 	}
 	return user, nil
 }

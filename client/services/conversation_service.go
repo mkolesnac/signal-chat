@@ -26,7 +26,7 @@ package services
 //}
 //
 //func (c *conversationService) ListPreviews() ([]models.ConversationPreview, error) {
-//	items, err := c.db.QueryValues("preview#")
+//	items, err := c.db.Query("preview#")
 //	if err != nil {
 //		return nil, fmt.Errorf("failed to query conversation previews: %w", err)
 //	}
@@ -44,7 +44,7 @@ package services
 //
 //func (c *conversationService) ListMessages(conversationID string) ([]models.Message, error) {
 //	prefix := fmt.Sprintf("conversation#%s|message#", conversationID)
-//	items, err := c.db.QueryValues(prefix)
+//	items, err := c.db.Query(prefix)
 //	if err != nil {
 //		return nil, fmt.Errorf("failed to query conversation messages: %w", err)
 //	}

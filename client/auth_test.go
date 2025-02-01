@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"encoding/json"
@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/http"
+	"signal-chat/client/apiclient"
+	"signal-chat/client/database"
 	"signal-chat/internal/api"
-	"signal-chat/internal/client/apiclient"
-	"signal-chat/internal/client/database"
 	"testing"
 )
 
@@ -110,7 +110,7 @@ func TestAuth_SignUp(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Equal(t, user.Email, "test@user.com")
+		assert.Equal(t, user.Username, "test@user.com")
 		assert.NotEmpty(t, user.ID)
 	})
 	t.Run("returns error when database fails to open", func(t *testing.T) {

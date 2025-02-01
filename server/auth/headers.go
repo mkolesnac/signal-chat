@@ -16,7 +16,7 @@ type Credentials struct {
 //
 //goland:noinspection GoErrorStringFormat
 func ParseBasicAuthHeader(c echo.Context) (*Credentials, error) {
-	// Extract Authorization header
+	// Extract authorization header
 	authHeader := c.Request().Header.Get("Authorization")
 	if authHeader == "" {
 		return nil, errors.New("missing authorization header")

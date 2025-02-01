@@ -1,15 +1,17 @@
-package client
+package main
 
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type Conversation struct {
-	ID                  string
-	LastMessagePreview  string
-	LastMessageSenderID string
-	ParticipantIDs      []string
+	ID                   string
+	LastMessagePreview   string
+	LastMessageSenderID  string
+	LastMessageTimestamp time.Time
+	ParticipantIDs       []string
 }
 
 func (c *Conversation) Serialize() ([]byte, error) {

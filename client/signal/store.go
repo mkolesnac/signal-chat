@@ -10,7 +10,7 @@ import (
 	"github.com/crossle/libsignal-protocol-go/protocol"
 	"github.com/crossle/libsignal-protocol-go/serialize"
 	"github.com/crossle/libsignal-protocol-go/state/record"
-	"signal-chat/internal/client/database"
+	"signal-chat/client/database"
 )
 
 var ErrInitialized = errors.New("store is already initialized. Create new store using NewStore function")
@@ -50,7 +50,7 @@ func (s *Store) SetupNewUser(registrationID uint32, identityKey *identity.KeyPai
 	// Write registrationID to database in LittleEndian format
 	idBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(idBytes, registrationID)
-	err := s.db.WriteValue(RegistrationIdDatabaseKey, idBytes)
+	err := s.db.Write(RegistrationIdDatabaseKey, idBytes)
 	if err != nil {
 		// Signal store interface function do not return error. Their implementations can
 		//therefore only panic if there is some error. For the sake of consistency we use
@@ -61,12 +61,12 @@ func (s *Store) SetupNewUser(registrationID uint32, identityKey *identity.KeyPai
 	s.identityKey = identityKey
 	// Write private identity key to database
 	privateBytes := identityKey.PrivateKey().Serialize()
-	err = s.db.WriteValue(PrivateIdentityDatabaseKey, privateBytes[:])
+	err = s.db.Write(PrivateIdentityDatabaseKey, privateBytes[:])
 	if err != nil {
 		panic(fmt.Errorf("failed to store private identity key: %v", err))
 	}
 	// Write private identity key to database
-	err = s.db.WriteValue(PublicIdentityDatabaseKey, identityKey.PublicKey().Serialize())
+	err = s.db.Write(PublicIdentityDatabaseKey, identityKey.PublicKey().Serialize())
 	if err != nil {
 		panic(fmt.Errorf("failed to store public identity key: %v", err))
 	}
@@ -107,7 +107,7 @@ func (s *Store) GetLocalRegistrationId() uint32 {
 		return s.registrationID
 	}
 
-	bytes, err := s.db.ReadValue(RegistrationIdDatabaseKey)
+	bytes, err := s.db.Read(RegistrationIdDatabaseKey)
 	if err != nil {
 		panic(fmt.Errorf("failed to read registrationID: %w", err))
 	}
@@ -284,7 +284,7 @@ func (s *Store) panicIfNotInitialized() {
 }
 
 func (s *Store) readValueFromDb(key string) []byte {
-	value, err := s.db.ReadValue(key)
+	value, err := s.db.Read(key)
 	if err != nil {
 		panic(fmt.Errorf("cannot read key %s from Database: %w", key, err))
 	}
@@ -292,14 +292,14 @@ func (s *Store) readValueFromDb(key string) []byte {
 }
 
 func (s *Store) writeValueToDb(key string, value []byte) {
-	err := s.db.WriteValue(key, value)
+	err := s.db.Write(key, value)
 	if err != nil {
 		panic(fmt.Errorf("cannot write key %s to Database: %w", key, err))
 	}
 }
 
 func (s *Store) deleteValueFromDb(key string) {
-	err := s.db.DeleteValue(key)
+	err := s.db.Delete(key)
 	if err != nil {
 		panic(fmt.Errorf("cannot delete key %s from db: %w", key, err))
 	}
