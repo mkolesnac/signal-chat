@@ -1,20 +1,21 @@
 import * as React from 'react';
-import Sheet from '@mui/joy/Sheet';
+import { Navigate, Outlet } from 'react-router-dom'
+import Sidebar from '../components/Sidebar'
+import Header from '../components/Header'
+import Box from '@mui/joy/Box'
+import { ChatProps } from '../types'
+import { chats } from '../data'
+import Sheet from '@mui/joy/Sheet'
+import ChatsPane from '../components/ChatsPane'
+import MessagesPane from './MessagesPane'
 
-import MessagesPane from './MessagesPane';
-import ChatsPane from './ChatsPane';
-import { ChatProps } from '../types';
-import { chats } from '../data';
-
-export default function MyProfile() {
+export default function ChatLayout() {
   const [selectedChat, setSelectedChat] = React.useState<ChatProps>(chats[0]);
   return (
     <Sheet
       sx={{
-        flex: 1,
         width: '100%',
-        mx: 'auto',
-        pt: { xs: 'var(--Header-height)', md: 0 },
+        height: '100dvh',
         display: 'grid',
         gridTemplateColumns: {
           xs: '1fr',
@@ -31,8 +32,7 @@ export default function MyProfile() {
           },
           transition: 'transform 0.4s, width 0.4s',
           zIndex: 100,
-          width: '100%',
-          top: 52,
+          width: '100%'
         }}
       >
         <ChatsPane
@@ -41,7 +41,19 @@ export default function MyProfile() {
           setSelectedChat={setSelectedChat}
         />
       </Sheet>
-      <MessagesPane chat={selectedChat} />
+      <Box component="main" className="MainContent">
+        <Outlet/>
+        {/*<MessagesPane chat={selectedChat} />*/}
+      </Box>
     </Sheet>
   );
+
+  // return (
+  //   <Box sx={{ display: 'flex', minHeight: '100dvh' }}>
+  //     <Box component="main" className="MainContent" sx={{ flex: 1 }}>
+  //       <MyMessages />
+  //     </Box>
+  //   </Box>
+  // );
 }
+

@@ -10,18 +10,41 @@ import Typography from '@mui/joy/Typography'
 import Stack from '@mui/joy/Stack'
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded'
 import ColorSchemeToggle from '../components/ColorSchemeToggle'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { SignUp } from '../../wailsjs/go/main/Auth'
+import { Alert } from '@mui/joy'
+import ReportIcon from '@mui/icons-material/Report'
+import { useAuth } from '../contexts/AuthContext'
 
 interface FormElements extends HTMLFormControlsCollection {
-  email: HTMLInputElement
+  username: HTMLInputElement
   password: HTMLInputElement
-  persistent: HTMLInputElement
 }
-interface SignInFormElement extends HTMLFormElement {
+interface SignUpFormElement extends HTMLFormElement {
   readonly elements: FormElements
 }
 
-export default function SignUp() {
+export default function SignUpPage() {
+  const {setUser} = useAuth();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (event: React.FormEvent<SignUpFormElement>) => {
+    event.preventDefault()
+
+    const formElements = event.currentTarget.elements
+
+    try {
+      const user = await SignUp(formElements.username.value, formElements.password.value);
+      console.log('usere: %o', user)
+      setUser(user);
+      navigate('/', { replace: true });
+    }  catch (error) {
+      setError(String(error))
+    }
+  }
+
   // @ts-ignore
   return (
     <Box>
@@ -85,17 +108,13 @@ export default function SignUp() {
             </Typography>
           </Stack>
           <Stack sx={{ gap: 4, mt: 2 }}>
+            {error && (
+              <Alert color="danger" variant="soft" startDecorator={<ReportIcon />}>
+                {error}
+              </Alert>
+            )}
             <form
-              onSubmit={(event: React.FormEvent<SignInFormElement>) => {
-                event.preventDefault()
-                const formElements = event.currentTarget.elements
-                const data = {
-                  email: formElements.email.value,
-                  password: formElements.password.value,
-                  persistent: formElements.persistent.checked,
-                }
-                alert(JSON.stringify(data, null, 2))
-              }}
+              onSubmit={handleSubmit}
             >
               <FormControl required>
                 <FormLabel>Email</FormLabel>

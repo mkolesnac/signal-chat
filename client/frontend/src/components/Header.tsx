@@ -4,13 +4,9 @@ import IconButton from '@mui/joy/IconButton';
 import Sheet from '@mui/joy/Sheet';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import { toggleSidebar } from '../utils';
-import { useTheme } from '@mui/joy'
 
 export default function Header() {
-  const theme = useTheme()
-  console.log("tewg")
-
-  return (
+   return (
     <Sheet
       sx={{
         display: { sm: 'flex', md: 'none' },

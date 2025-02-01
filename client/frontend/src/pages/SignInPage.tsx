@@ -10,19 +10,40 @@ import Typography from '@mui/joy/Typography'
 import Stack from '@mui/joy/Stack'
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded'
 import ColorSchemeToggle from '../components/ColorSchemeToggle'
-import { GlobalStyles } from '@mui/joy'
-import { Link as RouterLink } from 'react-router-dom'
+import { Alert, GlobalStyles } from '@mui/joy'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import {SignIn} from "../../wailsjs/go/main/Auth";
+import { useState } from 'react'
+import ReportIcon from '@mui/icons-material/Report';
+import { useAuth } from '../contexts/AuthContext'
 
 interface FormElements extends HTMLFormControlsCollection {
   email: HTMLInputElement
   password: HTMLInputElement
-  persistent: HTMLInputElement
 }
 interface SignInFormElement extends HTMLFormElement {
   readonly elements: FormElements
 }
 
-export default function SignIn() {
+export default function SignInPage() {
+  const {setUser} = useAuth();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (event: React.FormEvent<SignInFormElement>) => {
+    event.preventDefault()
+
+    const formElements = event.currentTarget.elements
+
+    try {
+      const user = await SignIn(formElements.email.value, formElements.password.value);
+      setUser(user);
+      navigate('/', { replace: true });
+    }  catch (error) {
+      setError(String(error))
+    }
+  }
+
   // @ts-ignore
   return (
     <Box>
@@ -106,18 +127,12 @@ export default function SignIn() {
               </Typography>
             </Stack>
             <Stack sx={{ gap: 4, mt: 2 }}>
-              <form
-                onSubmit={(event: React.FormEvent<SignInFormElement>) => {
-                  event.preventDefault()
-                  const formElements = event.currentTarget.elements
-                  const data = {
-                    email: formElements.email.value,
-                    password: formElements.password.value,
-                    persistent: formElements.persistent.checked,
-                  }
-                  alert(JSON.stringify(data, null, 2))
-                }}
-              >
+              {error && (
+                <Alert color="danger" variant="soft" startDecorator={<ReportIcon />}>
+                  {error}
+                </Alert>
+              )}
+              <form onSubmit={handleSubmit}>
                 <FormControl required>
                   <FormLabel>Email</FormLabel>
                   <Input type="email" name="email" />

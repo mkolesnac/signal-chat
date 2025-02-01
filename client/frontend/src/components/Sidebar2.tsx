@@ -33,7 +33,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import ColorSchemeToggle from './ColorSchemeToggle';
 import { closeSidebar } from '../utils';
 
-function Toggler(props: {
+function Toggler2(props: {
   defaultExpanded?: boolean;
   children: React.ReactNode;
   renderToggle: (params: {
@@ -64,7 +64,7 @@ function Toggler(props: {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar2() {
   return (
     <Sheet
       className="Sidebar"
@@ -174,7 +174,7 @@ export default function Sidebar() {
             </ListItemButton>
           </ListItem>
           <ListItem nested>
-            <Toggler
+            <Toggler2
               renderToggle={({ open, setOpen }) => (
                 <ListItemButton onClick={() => setOpen(!open)}>
                   <AssignmentRoundedIcon />
@@ -209,7 +209,7 @@ export default function Sidebar() {
                   <ListItemButton>Done</ListItemButton>
                 </ListItem>
               </List>
-            </Toggler>
+            </Toggler2>
           </ListItem>
           <ListItem>
             <ListItemButton selected>
@@ -223,7 +223,7 @@ export default function Sidebar() {
             </ListItemButton>
           </ListItem>
           <ListItem nested>
-            <Toggler
+            <Toggler2
               renderToggle={({ open, setOpen }) => (
                 <ListItemButton onClick={() => setOpen(!open)}>
                   <GroupRoundedIcon />
@@ -261,7 +261,7 @@ export default function Sidebar() {
                   <ListItemButton>Roles & permission</ListItemButton>
                 </ListItem>
               </List>
-            </Toggler>
+            </Toggler2>
           </ListItem>
         </List>
         <List
