@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 type Message struct {
@@ -10,6 +11,7 @@ type Message struct {
 	ConversationID string
 	Text           string
 	SenderID       string
+	Timestamp      time.Time
 }
 
 func (c *Message) Serialize() ([]byte, error) {

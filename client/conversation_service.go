@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"signal-chat/client/database"
+	"time"
 )
 
 type ConversationService struct {
@@ -35,7 +36,7 @@ func (c *ConversationService) ListConversations() ([]Conversation, error) {
 func (c *ConversationService) ListMessages(conversationID string) ([]Message, error) {
 	requireNonEmpty("conversationID", conversationID)
 
-	err := c.checkIfConversationExists(conversationID)
+	_, err := c.getConversation(conversationID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +92,7 @@ func (c *ConversationService) SendMessage(conversationID, messageText, senderID 
 	requireNonEmpty("messageText", messageText)
 	requireNonEmpty("senderID", senderID)
 
-	err := c.checkIfConversationExists(conversationID)
+	conv, err := c.getConversation(conversationID)
 	if err != nil {
 		return Message{}, err
 	}
@@ -101,6 +102,7 @@ func (c *ConversationService) SendMessage(conversationID, messageText, senderID 
 		ConversationID: conversationID,
 		Text:           messageText,
 		SenderID:       senderID,
+		Timestamp:      time.Now(),
 	}
 
 	bytes, err := msg.Serialize()
@@ -111,6 +113,19 @@ func (c *ConversationService) SendMessage(conversationID, messageText, senderID 
 	err = c.db.Write(database.MessagePK(conversationID, msg.ID), bytes)
 	if err != nil {
 		return Message{}, fmt.Errorf("failed to write message: %w", err)
+	}
+
+	conv.LastMessagePreview = messagePreview(messageText)
+	conv.LastMessageTimestamp = msg.Timestamp
+	conv.LastMessageSenderID = msg.SenderID
+	convBytes, err := conv.Serialize()
+	if err != nil {
+		return Message{}, fmt.Errorf("failed to serialize conversation: %w", err)
+	}
+
+	err = c.db.Write(database.ConversationPK(conversationID), convBytes)
+	if err != nil {
+		return Message{}, fmt.Errorf("failed to update conversation: %w", err)
 	}
 
 	return msg, nil
@@ -127,14 +142,19 @@ func requireNonEmpty(name, value string) {
 	}
 }
 
-func (c *ConversationService) checkIfConversationExists(conversationID string) error {
-	conv, err := c.db.Read(database.ConversationPK(conversationID))
+func (c *ConversationService) getConversation(conversationID string) (Conversation, error) {
+	bytes, err := c.db.Read(database.ConversationPK(conversationID))
 	if err != nil {
-		return fmt.Errorf("failed to read conversation: %w", err)
+		return Conversation{}, fmt.Errorf("failed to read conversation: %w", err)
 	}
-	if conv == nil {
-		return fmt.Errorf("conversation not found")
+	if bytes == nil {
+		return Conversation{}, fmt.Errorf("conversation not found")
 	}
 
-	return nil
+	conv, err := DeserializeConversation(bytes)
+	if err != nil {
+		return Conversation{}, fmt.Errorf("failed to deserialize conversation: %w", err)
+	}
+
+	return conv, nil
 }
