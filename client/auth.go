@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/crossle/libsignal-protocol-go/keys/identity"
@@ -209,9 +208,4 @@ func isValidEmail(email string) bool {
 	regex := `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
 	re := regexp.MustCompile(regex)
 	return re.MatchString(email)
-}
-
-func basicAuthorization(username, password string) string {
-	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-	return "Basic " + credentials
 }
