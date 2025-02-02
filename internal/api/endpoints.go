@@ -6,4 +6,5 @@ const (
 	EndpointSignUp  = prefix + "/signup"
 	EndpointSignIn  = prefix + "/signin"
 	EndpointSignOut = prefix + "/signout"
+	EndpointUser    = prefix + "/user"
 )
