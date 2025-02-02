@@ -54,8 +54,8 @@ func (f *Fake) Get(route string, target any) (int, error) {
 	f.recordRequest("GET", route, nil)
 
 	switch {
-	case strings.HasPrefix(route, "/user/"):
-		id := strings.TrimPrefix(route, "/user/")
+	case strings.HasPrefix(route, api.EndpointUser):
+		id := strings.TrimPrefix(strings.TrimPrefix(route, api.EndpointUser), "/")
 		if id == "" {
 			resp := api.GetUserResponse{Error: "invalid user ID"}
 			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
@@ -106,7 +106,7 @@ func (f *Fake) Post(route string, payload any, target any) (int, error) {
 			username: req.UserName,
 			password: req.Password,
 		}
-		f.users[req.UserName] = user
+		f.users[user.id] = user
 		f.currentUser = user
 
 		resp := api.SignUpResponse{
@@ -122,22 +122,31 @@ func (f *Fake) Post(route string, payload any, target any) (int, error) {
 			return http.StatusBadRequest, nil
 		}
 
-		user, exists := f.users[req.Username]
-		if !exists {
+		var user *User
+		for _, value := range f.users {
+			if value.username == req.Username {
+				user = &value
+			}
+		}
+
+		if user == nil {
 			resp := api.SignInResponse{Error: "user not found"}
 			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
 			return http.StatusBadRequest, nil
 		}
+
 		if user.password != req.Password {
 			resp := api.SignInResponse{Error: "invalid password"}
 			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
 			return http.StatusBadRequest, nil
 		}
 
-		f.currentUser = user
+		f.currentUser = *user
 
 		response := api.SignInResponse{
-			UserID: user.id,
+			UserID:   user.id,
+			Username: user.username,
+			Avatar:   "",
 		}
 		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(response))
 		return http.StatusOK, nil

@@ -6,8 +6,10 @@ type SignUpResponse struct {
 }
 
 type SignInResponse struct {
-	UserID string `json:"userId"`
-	Error  string `json:"error"`
+	UserID   string `json:"userId"`
+	Username string `json:"username"`
+	Avatar   string `json:"avatar"`
+	Error    string `json:"error"`
 }
 
 type GetUserResponse struct {

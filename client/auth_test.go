@@ -226,15 +226,17 @@ func TestAuth_SignIn(t *testing.T) {
 	t.Run("returns registered user on successful response from server", func(t *testing.T) {
 		// Arrange
 		auth := Auth{db: database.NewFake(), apiClient: apiclient.NewFake()}
-		wanted, err := auth.SignUp("test@user.com", DummyPassword)
+		username := "test@user.com"
+		registered, err := auth.SignUp(username, DummyPassword)
 		require.NoError(t, err)
 
 		// Act
-		got, err := auth.SignIn("test@user.com", DummyPassword)
+		signedIn, err := auth.SignIn(username, DummyPassword)
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Equal(t, wanted, got, "user that was registered during signup should have been returned")
+		assert.Equal(t, registered.ID, signedIn.ID, "user ID should match the ID of the user returned from SignUp")
+		assert.Equal(t, username, signedIn.Username, "username should match the username of the user returned from SignUp")
 	})
 	t.Run("returns error when database fails to open", func(t *testing.T) {
 		// Arrange

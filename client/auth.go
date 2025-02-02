@@ -96,7 +96,7 @@ func (a *Auth) SignUp(email, pwd string) (User, error) {
 		return User{}, fmt.Errorf("got error from server: %w", err)
 	}
 	if status != http.StatusOK {
-		return User{}, fmt.Errorf("got non succesful response from server, status %d", status)
+		return User{}, fmt.Errorf("server returned error: %s", resp.Error)
 	}
 
 	a.signedIn = true
@@ -133,13 +133,13 @@ func (a *Auth) SignIn(email, pwd string) (User, error) {
 		return User{}, fmt.Errorf("got error from server: %w", err)
 	}
 	if status != http.StatusOK {
-		return User{}, fmt.Errorf("got non succesful response from server, status %d", status)
+		return User{}, fmt.Errorf("server returned error: %s", resp.Error)
 	}
 
 	a.signedIn = true
 	user := User{
 		ID:       resp.UserID,
-		Username: email,
+		Username: resp.Username,
 	}
 	return user, nil
 }

@@ -137,12 +137,6 @@ func messagePreview(text string) string {
 	return text[0:l]
 }
 
-func requireNonEmpty(name, value string) {
-	if len(value) == 0 {
-		panic(fmt.Sprintf("%s cannot be empty", name))
-	}
-}
-
 func (c *ConversationService) getConversation(conversationID string) (Conversation, error) {
 	bytes, err := c.db.Read(database.ConversationPK(conversationID))
 	if err != nil {
