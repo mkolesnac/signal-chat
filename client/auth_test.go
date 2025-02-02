@@ -163,7 +163,7 @@ func TestAuth_SignUp(t *testing.T) {
 	})
 }
 
-func TestSignIn(t *testing.T) {
+func TestAuth_SignIn(t *testing.T) {
 	t.Run("returns error if email is invalid", func(t *testing.T) {
 		// Arrange
 		auth := Auth{}
@@ -272,7 +272,7 @@ func TestSignIn(t *testing.T) {
 		// Assert
 		assert.Error(t, err)
 	})
-	t.Run("returns error when server returns unsuccessful response", func(t *testing.T) {
+	t.Run("returns error when user doesn't exist", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
 		ac.PostStatus = http.StatusInternalServerError
@@ -286,7 +286,7 @@ func TestSignIn(t *testing.T) {
 	})
 }
 
-func TestSignOut(t *testing.T) {
+func TestAuth_SignOut(t *testing.T) {
 	t.Run("panics if not signed in", func(t *testing.T) {
 		auth := Auth{}
 		assert.Panics(t, func() { _ = auth.SignOut() }, "should panic when no user is signed in")
