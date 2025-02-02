@@ -64,10 +64,11 @@ func (c *ConversationService) CreateConversation(messageText, senderID, recipien
 	requireNonEmpty("recipientID", recipientID)
 
 	conv := Conversation{
-		ID:                  uuid.New().String(),
-		LastMessagePreview:  messagePreview(messageText),
-		LastMessageSenderID: senderID,
-		ParticipantIDs:      []string{senderID, recipientID},
+		ID:                   uuid.New().String(),
+		LastMessagePreview:   messagePreview(messageText),
+		LastMessageSenderID:  senderID,
+		LastMessageTimestamp: time.Now().Format(time.RFC3339),
+		ParticipantIDs:       []string{senderID, recipientID},
 	}
 
 	bytes, err := conv.Serialize()
@@ -102,7 +103,7 @@ func (c *ConversationService) SendMessage(conversationID, messageText, senderID 
 		ConversationID: conversationID,
 		Text:           messageText,
 		SenderID:       senderID,
-		Timestamp:      time.Now(),
+		Timestamp:      time.Now().Format(time.RFC3339),
 	}
 
 	bytes, err := msg.Serialize()

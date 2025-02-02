@@ -3,14 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 type Conversation struct {
 	ID                   string
 	LastMessagePreview   string
 	LastMessageSenderID  string
-	LastMessageTimestamp time.Time
+	LastMessageTimestamp string
 	ParticipantIDs       []string
 }
 
