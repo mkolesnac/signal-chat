@@ -2,12 +2,12 @@ package apiclient
 
 import (
 	"encoding/json"
-	"errors"
 	"math/rand"
 	"net/http"
 	"reflect"
 	"signal-chat/internal/api"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -48,10 +48,36 @@ func (f *Fake) ClearAuthorization() {
 }
 
 func (f *Fake) Get(route string, target any) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.recordRequest("GET", route, nil)
 
-	//TODO implement me
-	panic("implement me")
+	switch {
+	case strings.HasPrefix(route, "/user/"):
+		id := strings.TrimPrefix(route, "/user/")
+		if id == "" {
+			resp := api.GetUserResponse{Error: "invalid user ID"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
+		}
+
+		usr, exists := f.users[id]
+		if !exists {
+			resp := api.GetUserResponse{Error: "user not found"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
+		}
+
+		resp := api.GetUserResponse{
+			Username: usr.username,
+		}
+		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+		return http.StatusOK, nil
+	//case route == "/user/":
+	default:
+		return http.StatusNotFound, nil
+	}
 }
 
 func (f *Fake) Post(route string, payload any, target any) (int, error) {
@@ -64,11 +90,15 @@ func (f *Fake) Post(route string, payload any, target any) (int, error) {
 	case api.EndpointSignUp:
 		req, ok := payload.(api.SignUpRequest)
 		if !ok {
-			return http.StatusBadRequest, errors.New("invalid payload")
+			resp := api.SignUpResponse{Error: "invalid payload"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
 		}
 
 		if _, exists := f.users[req.UserName]; exists {
-			return http.StatusBadRequest, errors.New("user already exists")
+			resp := api.SignUpResponse{Error: "user already exists"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
 		}
 
 		user := User{
@@ -79,23 +109,29 @@ func (f *Fake) Post(route string, payload any, target any) (int, error) {
 		f.users[req.UserName] = user
 		f.currentUser = user
 
-		response := api.SignUpResponse{
+		resp := api.SignUpResponse{
 			UserID: user.id,
 		}
-		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(response))
+		reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
 		return http.StatusOK, nil
 	case api.EndpointSignIn:
 		req, ok := payload.(api.SignInRequest)
 		if !ok {
-			return http.StatusBadRequest, errors.New("invalid payload")
+			resp := api.SignInResponse{Error: "invalid payload"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
 		}
 
 		user, exists := f.users[req.Username]
 		if !exists {
-			return http.StatusBadRequest, errors.New("user not found")
+			resp := api.SignInResponse{Error: "user not found"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
 		}
 		if user.password != req.Password {
-			return http.StatusBadRequest, errors.New("invalid password")
+			resp := api.SignInResponse{Error: "invalid password"}
+			reflect.ValueOf(target).Elem().Set(reflect.ValueOf(resp))
+			return http.StatusBadRequest, nil
 		}
 
 		f.currentUser = user
