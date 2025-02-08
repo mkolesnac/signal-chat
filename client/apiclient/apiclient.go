@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io"
+	"log"
 	"net/http"
 	"reflect"
+	"signal-chat/internal/api"
+	"strings"
+	"time"
 )
 
-type Client interface {
+type HTTPClient interface {
 	// Get performs a GET request and unmarshals the response into target.
 	// The target must be a pointer to a value that can be unmarshalled from JSON.
 	Get(route string, target any) (int, error)
@@ -19,16 +24,33 @@ type Client interface {
 	Post(route string, payload any, target any) (int, error)
 }
 
+type EventSubscriber interface {
+	Subscribe(eventType string, handler func([]byte))
+}
+
+type Authenticator interface {
+	SetAuthorization(username, password string)
+	ClearAuthorization()
+}
+
 type APIClient struct {
-	ServerURL     string
-	authorization string
-	HttpClient    *http.Client
+	ServerURL  string
+	authToken  string
+	HttpClient *http.Client
+	WSConn     *websocket.Conn
+	handlers   map[string]func([]byte)
 }
 
 func NewAPIClient(serverURL string) *APIClient {
+	requireNonEmpty("serverURL", serverURL)
+	if !strings.Contains(serverURL, "http://") && !strings.Contains(serverURL, "https://") {
+		panic("serverURL must start with either http:// or https://")
+	}
+
 	return &APIClient{
-		ServerURL:  serverURL,
+		ServerURL:  strings.TrimSuffix(serverURL, "/"),
 		HttpClient: &http.Client{},
+		handlers:   make(map[string]func([]byte)),
 	}
 }
 
@@ -36,18 +58,18 @@ func (a *APIClient) SetAuthorization(username, password string) {
 	requireNonEmpty("username", username)
 	requireNonEmpty("password", password)
 
-	a.authorization = basicAuthorization(username, password)
+	a.authToken = basicAuthorization(username, password)
 }
 
 func (a *APIClient) ClearAuthorization() {
-	a.authorization = ""
+	a.authToken = ""
 }
 
 func (a *APIClient) Get(route string, target any) (int, error) {
 	requireNonEmpty("route", route)
 	requirePointer("target", target)
 
-	req, err := a.newRequest("GET", route, nil)
+	req, err := a.newHTTPRequest("GET", route, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -64,7 +86,7 @@ func (a *APIClient) Post(route string, payload any, target any) (int, error) {
 		return 0, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	req, err := a.newRequest("POST", route, b)
+	req, err := a.newHTTPRequest("POST", route, b)
 	if err != nil {
 		return 0, err
 	}
@@ -73,15 +95,114 @@ func (a *APIClient) Post(route string, payload any, target any) (int, error) {
 	return a.send(req, target)
 }
 
-func (a *APIClient) newRequest(method, route string, payload []byte) (*http.Request, error) {
+func (a *APIClient) StartListening() error {
+	header := http.Header{}
+	if a.authToken != "" {
+		header.Add("Authorization", a.authToken)
+	}
+
+	serverURL := strings.TrimPrefix(a.ServerURL, "http://")
+	serverURL = strings.TrimPrefix(serverURL, "https://")
+	if strings.Contains(a.ServerURL, "https://") {
+		serverURL = "wss://" + serverURL
+	} else {
+		serverURL = "ws://" + serverURL
+	}
+
+	conn, _, err := websocket.DefaultDialer.Dial(serverURL+"/ws", header)
+	if err != nil {
+		return err
+	}
+
+	a.WSConn = conn
+	go a.listenWebSocket()
+
+	return nil
+}
+
+func (a *APIClient) Subscribe(eventType string, handler func([]byte)) {
+	if a.WSConn != nil {
+		panic("cannot subscribe to new events after the websocket connection has been opened")
+	}
+
+	a.handlers[eventType] = handler
+}
+
+func (a *APIClient) Close() error {
+	if a.WSConn != nil {
+		// Send close message
+		message := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
+		err := a.WSConn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
+		if err != nil {
+			return err
+		}
+
+		// Close the connection
+		if err := a.WSConn.Close(); err != nil {
+			return err
+		}
+
+		a.WSConn = nil
+	}
+
+	return nil
+}
+
+func (a *APIClient) reconnect() error {
+	maxRetries := 5
+	backoff := time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		err := a.StartListening()
+		if err == nil {
+			return nil
+		}
+
+		time.Sleep(backoff)
+		backoff *= 2 // exponential backoff
+	}
+
+	return fmt.Errorf("failed to reconnect after %d attempts", maxRetries)
+}
+
+func (a *APIClient) listenWebSocket() {
+	defer func() {
+		if a.WSConn != nil {
+			_ = a.WSConn.Close()
+		}
+	}()
+
+	for {
+		var event api.WSMessage
+		err := a.WSConn.ReadJSON(&event)
+		if err != nil {
+			if !websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				return // Exit on non-reconnectable errors
+			}
+			if err := a.reconnect(); err != nil {
+				log.Printf("Failed to reconnect: %v", err)
+				return
+			}
+			continue
+		}
+
+		handler, exists := a.handlers[event.Type]
+
+		if exists {
+			handler(event.Payload)
+		}
+	}
+}
+
+func (a *APIClient) newHTTPRequest(method, route string, payload []byte) (*http.Request, error) {
 	url := a.ServerURL + route
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %s", err)
 	}
 
-	if a.authorization != "" {
-		req.Header.Set("Authorization", a.authorization)
+	if a.authToken != "" {
+		req.Header.Set("Authorization", a.authToken)
 	}
 
 	return req, nil
