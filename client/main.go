@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
@@ -18,12 +19,13 @@ func main() {
 	db := database.NewFake()
 	ac := apiclient.NewFake()
 	auth := NewAuth(db, ac)
-	conversations := NewConversationService(db)
+	conversations := NewConversationService(db, ac)
+	users := NewUserService(ac)
 
 	usr1, _ := auth.SignUp("mkolesnac@gmail.com", "test1234")
 	usr2, _ := auth.SignUp("test@gmail.com", "test1234")
-	conv, _ := conversations.CreateConversation("Hello world!", usr1.ID, usr2.ID)
-	_, _ = conversations.SendMessage(conv.ID, "Followup message", usr2.ID)
+	conv, _ := conversations.CreateConversation("Hello world!", usr2.ID)
+	_, _ = conversations.SendMessage(conv.ID, "Followup message")
 	_ = usr1
 	_ = usr2
 
@@ -39,10 +41,14 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown: func(ctx context.Context) {
+			_ = ac.Close()
+		},
 		Bind: []interface{}{
 			app,
 			auth,
 			conversations,
+			users,
 		},
 	})
 

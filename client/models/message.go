@@ -1,4 +1,4 @@
-package main
+package models
 
 import (
 	"encoding/json"
@@ -6,11 +6,10 @@ import (
 )
 
 type Message struct {
-	ID             string
-	ConversationID string
-	Text           string
-	SenderID       string
-	Timestamp      string
+	ID        string
+	Text      string
+	SenderID  string
+	Timestamp string
 }
 
 func (c *Message) Serialize() ([]byte, error) {

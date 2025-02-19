@@ -21,8 +21,3 @@ type UploadPreKeysRequest struct {
 type SendMessageRequest struct {
 	CipherText string `json:"cipherText" validate:"required"`
 }
-
-type CreateConversationRequest struct {
-	ParticipantIDs []string `json:"participantIds" validate:"required"`
-	CipherText     string   `json:"cipherText" validate:"required"`
-}

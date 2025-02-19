@@ -1,30 +1,161 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"net/http"
+	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"signal-chat/client/models"
+	"signal-chat/internal/api"
 	"testing"
 )
 
-const DummyUser = "dummy"
-const DummyText = "Hello there!"
+const (
+	DummyValue = "dummy"
+)
+
+func TestNewConversationService(t *testing.T) {
+	t.Run("processes all pending conversations from server", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		syncData := api.WSSyncData{
+			NewConversations: []api.WSNewConversationPayload{{
+				ConversationID: "123",
+				ParticipantIDs: []string{"alice", "bob"},
+				SenderID:       "alice",
+				MessageID:      "abc",
+				MessageText:    "First message!",
+				MessagePreview: "First...",
+				Timestamp:      "2024-02-16T10:00:00Z",
+			}},
+		}
+		ac.WSMessages = []api.WSMessage{{
+			Type: api.MessageTypeSync,
+			Data: mustMarshal(syncData),
+		}}
+
+		// Act
+		svc := NewConversationService(db, ac)
+
+		// Assert
+		conversations, err := svc.ListConversations()
+		require.NoError(t, err)
+		assert.Len(t, conversations, 1, "One conversation should have been created")
+		expected := syncData.NewConversations[0]
+		assert.Equal(t, expected.ConversationID, conversations[0].ID)
+		assert.Equal(t, expected.ParticipantIDs, conversations[0].ParticipantIDs)
+		assert.Equal(t, expected.SenderID, conversations[0].LastMessageSenderID)
+		assert.Equal(t, expected.MessagePreview, conversations[0].LastMessagePreview)
+		assert.Equal(t, expected.Timestamp, conversations[0].LastMessageTimestamp)
+		messages, err := svc.ListMessages(expected.ConversationID)
+		require.NoError(t, err)
+		assert.Len(t, messages, 1, "One message should have been created")
+		assert.Equal(t, expected.MessageID, messages[0].ID)
+		assert.Equal(t, expected.SenderID, messages[0].SenderID)
+		assert.Equal(t, expected.MessageText, messages[0].Text)
+		assert.Equal(t, expected.Timestamp, messages[0].Timestamp)
+	})
+	t.Run("processes all pending messages from server", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		syncData := api.WSSyncData{
+			NewConversations: []api.WSNewConversationPayload{{
+				ConversationID: "123",
+				ParticipantIDs: []string{"alice", "bob"},
+				SenderID:       "alice",
+				MessageID:      "abc",
+				MessageText:    "First message!",
+				MessagePreview: "First...",
+				Timestamp:      "2024-02-16T10:00:00Z",
+			}},
+			NewMessages: []api.WSNewMessagePayload{{
+				ConversationID: "123",
+				MessageID:      "def",
+				SenderID:       "bob",
+				Text:           "Second message!",
+				Preview:        "Second...",
+				Timestamp:      "2024-03-16T10:00:00Z",
+			}},
+		}
+		ac.WSMessages = []api.WSMessage{{
+			Type: api.MessageTypeSync,
+			Data: mustMarshal(syncData),
+		}}
+
+		// Act
+		svc := NewConversationService(db, ac)
+
+		// Assert
+		conversations, err := svc.ListConversations()
+		require.NoError(t, err)
+		assert.Len(t, conversations, 1, "One conversation should have been created")
+		assert.Equal(t, syncData.NewMessages[0].SenderID, conversations[0].LastMessageSenderID, "last message sender ID should have been updated to the sender ID of the last message")
+		assert.Equal(t, syncData.NewMessages[0].Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
+		assert.Equal(t, syncData.NewMessages[0].Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp should have been updated to the timestamp of the last message")
+		messages, err := svc.ListMessages(syncData.NewMessages[0].ConversationID)
+		require.NoError(t, err)
+		assert.Len(t, messages, 2, "Two message should have been created")
+		assert.Equal(t, syncData.NewMessages[0].MessageID, messages[1].ID)
+		assert.Equal(t, syncData.NewMessages[0].SenderID, messages[1].SenderID)
+		assert.Equal(t, syncData.NewMessages[0].Text, messages[1].Text)
+		assert.Equal(t, syncData.NewMessages[0].Timestamp, messages[1].Timestamp)
+	})
+	t.Run("returns error when database write fails", func(t *testing.T) {
+		// Arrange
+		db := database.NewStub()
+		expectedErr := errors.New("write error")
+		db.WriteErr = expectedErr
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+
+		var capturedErr error
+		ac.SetErrorHandler(func(err error) {
+			capturedErr = err
+		})
+
+		syncData := api.WSSyncData{
+			NewConversations: []api.WSNewConversationPayload{{
+				ConversationID: "123",
+				ParticipantIDs: []string{"alice", "bob"},
+				SenderID:       "alice",
+				MessageID:      "abc",
+				MessageText:    "First message!",
+				MessagePreview: "First...",
+				Timestamp:      "2024-02-16T10:00:00Z",
+			}},
+		}
+		ac.WSMessages = []api.WSMessage{{
+			Type: api.MessageTypeSync,
+			Data: mustMarshal(syncData),
+		}}
+
+		// Act
+		_ = NewConversationService(db, ac)
+
+		// Assert
+		assert.Error(t, capturedErr, "error handler on API client should have been called")
+		assert.ErrorIs(t, capturedErr, expectedErr, "should pass database error to handler")
+	})
+}
 
 func TestConversationService_ListConversations(t *testing.T) {
 	t.Run("returns all existing conversations", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		conv1, err := svc.CreateConversation("First message", "alice", "bob")
-		if err != nil {
-			t.Fatal(err)
-		}
-		conv2, err := svc.CreateConversation("First message", "alice", "tom")
-		if err != nil {
-			t.Fatal(err)
-		}
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
+		conv1, err := svc.CreateConversation("First message", "bob")
+		require.NoError(t, err)
+		conv2, err := svc.CreateConversation("First message", "tom")
+		require.NoError(t, err)
 
 		// Act
 		conversations, err := svc.ListConversations()
@@ -38,8 +169,8 @@ func TestConversationService_ListConversations(t *testing.T) {
 	t.Run("returns empty list when no conversations exist", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		service := NewConversationService(db)
+		_ = db.Open(DummyValue)
+		service := NewConversationService(db, apiclient.NewFake())
 
 		// Act
 		got, err := service.ListConversations()
@@ -51,9 +182,9 @@ func TestConversationService_ListConversations(t *testing.T) {
 	t.Run("returns error when unparsable conversation in database", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
+		_ = db.Open(DummyValue)
 		_ = db.Write(database.ConversationPK("abc"), []byte("invalid"))
-		service := NewConversationService(db)
+		service := NewConversationService(db, apiclient.NewFake())
 
 		// Act
 		got, err := service.ListConversations()
@@ -65,7 +196,7 @@ func TestConversationService_ListConversations(t *testing.T) {
 	t.Run("returns error when database query fails", func(t *testing.T) {
 		// Arrange
 		db := &database.Stub{QueryErr: errors.New("query err")}
-		service := NewConversationService(db)
+		service := NewConversationService(db, apiclient.NewFake())
 
 		// Act
 		got, err := service.ListConversations()
@@ -77,189 +208,223 @@ func TestConversationService_ListConversations(t *testing.T) {
 }
 
 func TestConversationService_CreateConversation(t *testing.T) {
-	t.Run("creates conversation with given message text and sender ID", func(t *testing.T) {
+	t.Run("creates conversation on successful response from server", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		senderID := "alice"
-		recipientID := "bob"
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		resp := api.CreateConversationResponse{
+			ConversationID: "123",
+			MessageID:      DummyValue,
+			SenderID:       "current-user",
+			ParticipantIDs: []string{"current-user", "bob"},
+			Timestamp:      "2024-02-16T10:00:00Z",
+		}
+		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       mustMarshal(resp),
+		}
+		svc := NewConversationService(db, ac)
 		messageText := "Hello there!"
 
 		// Act
-		conv, err := svc.CreateConversation(messageText, senderID, recipientID)
+		conv, err := svc.CreateConversation(messageText, "bob")
 
 		// Assert
 		assert.NoError(t, err)
+		assert.Equal(t, resp.ConversationID, conv.ID, "server's conversation ID must be preserved")
+		assert.Equal(t, resp.ParticipantIDs, conv.ParticipantIDs, "server's participant IDs must be preserved")
+		assert.Equal(t, resp.Timestamp, conv.LastMessageTimestamp, "last message timestamp should use value returned from server")
+		assert.Equal(t, resp.SenderID, conv.LastMessageSenderID, "server's sender ID must be preserved")
 		assert.Contains(t, messageText, conv.LastMessagePreview, "generated message preview should be part of the original message text")
-		assert.Equal(t, senderID, conv.LastMessageSenderID)
-		assert.Contains(t, conv.ParticipantIDs, senderID, "sender should be a conversation participant")
-		assert.Contains(t, conv.ParticipantIDs, recipientID, "recipient should be a conversation participant")
-		assert.True(t, isISO8601(conv.LastMessageTimestamp), "timestamp should be ISO8601 format")
+		conversations, err := svc.ListConversations()
+		require.NoError(t, err)
+		assert.Contains(t, conversations, conv, "conversation should be retrievable after creation")
 	})
 	t.Run("creates initial conversation message", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		senderID := "alice"
-		recipientID := "bob"
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		resp := api.CreateConversationResponse{
+			ConversationID: DummyValue,
+			MessageID:      "msg#123",
+			SenderID:       "current-user",
+			ParticipantIDs: []string{"current-user", "bob"},
+			Timestamp:      "2024-02-16T10:00:00Z",
+		}
+		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       mustMarshal(resp),
+		}
+		svc := NewConversationService(db, ac)
 		messageText := "Hello there!"
 
 		// Act
-		conv, _ := svc.CreateConversation(messageText, senderID, recipientID)
+		conv, err := svc.CreateConversation(messageText, DummyValue)
 
 		// Assert
-		messages, err := svc.ListMessages(conv.ID)
 		assert.NoError(t, err)
+		messages, err := svc.ListMessages(conv.ID)
+		require.NoError(t, err)
 		assert.Len(t, messages, 1, "only one message should be created")
-		assert.Equal(t, messages[0].Text, messageText, "a message with matching text should have been created")
-		assert.Equal(t, messages[0].SenderID, senderID)
+		assert.Equal(t, messageText, messages[0].Text, "a message with matching text should have been created")
+		assert.Equal(t, resp.Timestamp, messages[0].Timestamp, "timestamp returned from the server should have been used")
+		assert.Equal(t, resp.SenderID, messages[0].SenderID, "sender ID returned from the server should have been used")
 	})
-	t.Run("creates conversations with unique IDs", func(t *testing.T) {
+	t.Run("returns error if API client fails to send request", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		ac.PostErrors[api.EndpointConversations] = errors.New("test error")
+		svc := NewConversationService(db, ac)
 
 		// Act
-		conv1, err1 := svc.CreateConversation("First message", "alice", "bob")
-		conv2, err2 := svc.CreateConversation("First message", "alice", "tom")
-
-		// Assert
-		assert.NoError(t, err1)
-		assert.NoError(t, err2)
-		assert.NotEmpty(t, conv1.ID)
-		assert.NotEmpty(t, conv2.ID)
-		assert.NotEqual(t, conv1.ID, conv2.ID)
-	})
-	t.Run("returns error when database write fails", func(t *testing.T) {
-		// Arrange
-		db := &database.Stub{WriteErr: errors.New("write err")}
-		svc := NewConversationService(db)
-
-		// Act
-		_, err := svc.CreateConversation("Initial message", "alice", "bob")
+		_, err := svc.CreateConversation(DummyValue, DummyValue)
 
 		// Assert
 		assert.Error(t, err)
 	})
-	t.Run("panics with empty required args", func(t *testing.T) {
+	t.Run("returns error if server returns unsuccessful response", func(t *testing.T) {
 		// Arrange
-		tests := []struct {
-			name        string
-			messageText string
-			senderID    string
-			recipientID string
-		}{
-			{
-				name:        "empty message text",
-				messageText: "",
-				senderID:    "alice",
-				recipientID: "bob",
-			},
-			{
-				name:        "empty sender ID",
-				messageText: "Hello",
-				senderID:    "",
-				recipientID: "bob",
-			},
-			{
-				name:        "empty recipient ID",
-				messageText: "Hello",
-				senderID:    "alice",
-				recipientID: "",
-			},
-		}
-
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				assert.Panics(t, func() {
-					_, _ = svc.CreateConversation(tt.messageText, tt.senderID, tt.recipientID)
-				})
-			})
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       mustMarshal(api.CreateConversationResponse{Error: "test error"}),
 		}
+		svc := NewConversationService(db, ac)
+
+		// Act
+		_, err := svc.CreateConversation(DummyValue, DummyValue)
+
+		// Assert
+		assert.Error(t, err)
+	})
+	t.Run("panics when empty messageText", func(t *testing.T) {
+		db := database.NewFake()
+		err := db.Open(DummyValue)
+		require.NoError(t, err)
+		svc := NewConversationService(db, apiclient.NewFake())
+
+		assert.Panics(t, func() { _, _ = svc.CreateConversation("", "bob") })
+	})
+	t.Run("panics when empty recipientID", func(t *testing.T) {
+		db := database.NewFake()
+		err := db.Open(DummyValue)
+		require.NoError(t, err)
+		svc := NewConversationService(db, apiclient.NewFake())
+
+		assert.Panics(t, func() { _, _ = svc.CreateConversation("test", "") })
+	})
+	t.Run("returns error when database write fails", func(t *testing.T) {
+		// Arrange
+		db := &database.Stub{WriteErr: errors.New("write err")}
+		svc := NewConversationService(db, apiclient.NewFake())
+
+		// Act
+		_, err := svc.CreateConversation("Initial message", "bob")
+
+		// Assert
+		assert.Error(t, err)
 	})
 }
 
 func TestConversationService_SendMessage(t *testing.T) {
-	t.Run("adds new message to conversation", func(t *testing.T) {
+	t.Run("creates a new message on successful response from server", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
-		if err != nil {
-			t.Fatal(err)
-		}
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
+		conv, err := svc.CreateConversation(DummyValue, DummyValue)
+		require.NoError(t, err)
 
 		// Act
-		msg, err := svc.SendMessage(conv.ID, "Second message", "bob")
+		msg, err := svc.SendMessage(conv.ID, "Second message")
 
 		// Assert
 		assert.NoError(t, err)
+		assert.NotEmpty(t, msg.ID, "message ID returned from server should have been used")
+		assert.NotEmpty(t, msg.SenderID, "sender ID returned from server should have been used")
+		assert.NotEmpty(t, msg.Timestamp, "timestamp returned from server should have been used")
 		assert.Equal(t, "Second message", msg.Text)
-		assert.Equal(t, "bob", msg.SenderID)
-		assert.Equal(t, conv.ID, msg.ConversationID)
-		assert.True(t, isISO8601(msg.Timestamp), "timestamp should be ISO8601 format")
+		messages, err := svc.ListMessages(conv.ID)
+		require.NoError(t, err)
+		assert.Contains(t, messages, msg, "message should be retrievable after creation")
 	})
-	t.Run("updates conversation last message", func(t *testing.T) {
+	t.Run("updates conversation's last message preview", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
-		if err != nil {
-			t.Fatal(err)
-		}
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
+		conv, err := svc.CreateConversation(DummyValue, DummyValue)
+		require.NoError(t, err)
 
 		// Act
-		msg, err := svc.SendMessage(conv.ID, "Second message", "bob")
+		msg, err := svc.SendMessage(conv.ID, "Second message")
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Equal(t, "Second message", msg.Text)
-		assert.Equal(t, "bob", msg.SenderID)
-		assert.Equal(t, conv.ID, msg.ConversationID)
 		conversations, err := svc.ListConversations()
 		require.NoError(t, err)
-		assert.Contains(t, msg.Text, conversations[0].LastMessagePreview, "Last message preview in conversation should have been updated")
-		assert.Equal(t, msg.Timestamp, conversations[0].LastMessageTimestamp, "Last message timestamp in conversation should have been updated")
-		assert.Equal(t, msg.SenderID, conversations[0].LastMessageSenderID, "Last message sender ID in conversation should have been updated")
-	})
-	t.Run("creates messages with unique IDs", func(t *testing.T) {
-		// Arrange
-		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Act
-		msg1, err1 := svc.SendMessage(conv.ID, "First message", "bob")
-		msg2, err2 := svc.SendMessage(conv.ID, "Second message", "bob")
-
-		// Assert
-		assert.NoError(t, err1)
-		assert.NoError(t, err2)
-		assert.NotEmpty(t, msg1.ID)
-		assert.NotEmpty(t, msg2.ID)
-		assert.NotEqual(t, msg1.ID, msg2.ID)
+		require.Len(t, conversations, 1)
+		assert.Contains(t, msg.Text, conversations[0].LastMessagePreview, "last message preview in conversation should have been updated")
+		assert.Equal(t, msg.Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp in conversation should have been updated")
+		assert.Equal(t, msg.SenderID, conversations[0].LastMessageSenderID, "last message sender ID in conversation should have been updated")
 	})
 	t.Run("returns error when given conversation doesn't exist", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFake())
 
 		// Act
-		_, err := svc.SendMessage("123", "Second message", "bob")
+		_, err := svc.SendMessage("123", DummyValue)
+
+		// Assert
+		assert.Error(t, err)
+	})
+	t.Run("returns error if API client fails to send request", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       mustMarshal(api.CreateConversationResponse{ConversationID: "123"}),
+		}
+		ac.PostErrors[api.EndpointMessages] = errors.New("test error") // fail on create message request
+		svc := NewConversationService(db, ac)
+		conv, err := svc.CreateConversation(DummyValue, DummyValue)
+		require.NoError(t, err)
+
+		// Act
+		_, err = svc.SendMessage(conv.ID, DummyValue)
+
+		// Assert
+		assert.Error(t, err)
+	})
+	t.Run("returns error if server returns unsuccessful response", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       mustMarshal(api.CreateConversationResponse{ConversationID: "123"}),
+		}
+		ac.PostResponses[api.EndpointMessages] = apiclient.StubResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       mustMarshal(api.CreateConversationResponse{Error: "test error"}),
+		}
+		svc := NewConversationService(db, ac)
+		conv, err := svc.CreateConversation(DummyValue, DummyValue)
+		require.NoError(t, err)
+
+		// Act
+		_, err = svc.SendMessage(conv.ID, DummyValue)
 
 		// Assert
 		assert.Error(t, err)
@@ -269,60 +434,32 @@ func TestConversationService_SendMessage(t *testing.T) {
 		db := database.NewStub()
 		id := "123"
 		key := string(database.ConversationPK(id))
-		bytes, _ := (&Conversation{ID: id}).Serialize()
+		bytes, _ := (&models.Conversation{ID: id}).Serialize()
 		db.QueryResult = map[string][]byte{key: bytes}
 		db.WriteErr = errors.New("write error")
-		svc := NewConversationService(db)
+		svc := NewConversationService(db, apiclient.NewFake())
 
 		// Act
-		_, err := svc.SendMessage(id, "Initial message", "alice")
+		_, err := svc.SendMessage(id, "New message")
 
 		// Assert
 		assert.Error(t, err)
 	})
-	t.Run("panics with empty required args", func(t *testing.T) {
-		// Arrange
+	t.Run("panics when empty conversationID", func(t *testing.T) {
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
-		if err != nil {
-			t.Fatal(err)
-		}
+		err := db.Open(DummyValue)
+		require.NoError(t, err)
+		svc := NewConversationService(db, apiclient.NewFake())
 
-		tests := []struct {
-			name           string
-			conversationID string
-			messageText    string
-			senderID       string
-		}{
-			{
-				name:           "empty conversation ID",
-				conversationID: "",
-				messageText:    "Hello",
-				senderID:       "alice",
-			},
-			{
-				name:           "empty message text",
-				conversationID: conv.ID,
-				messageText:    "",
-				senderID:       "alice",
-			},
-			{
-				name:           "empty sender ID",
-				conversationID: conv.ID,
-				messageText:    "Hello",
-				senderID:       "",
-			},
-		}
+		assert.Panics(t, func() { _, _ = svc.CreateConversation("", "New message") })
+	})
+	t.Run("panics when empty messageText", func(t *testing.T) {
+		db := database.NewFake()
+		err := db.Open(DummyValue)
+		require.NoError(t, err)
+		svc := NewConversationService(db, apiclient.NewFake())
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				assert.Panics(t, func() {
-					_, _ = svc.SendMessage(tt.conversationID, tt.messageText, tt.senderID)
-				})
-			})
-		}
+		assert.Panics(t, func() { _, _ = svc.SendMessage("123", "") })
 	})
 }
 
@@ -330,13 +467,13 @@ func TestConversationService_ListMessages(t *testing.T) {
 	t.Run("returns all messages from the given conversation", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
-		conv, err := svc.CreateConversation(DummyText, "alice", "bob")
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
+		conv, err := svc.CreateConversation(DummyValue, DummyValue)
 		if err != nil {
 			t.Fatal(err)
 		}
-		msg, err := svc.SendMessage(conv.ID, "Second message", "alice")
+		msg, err := svc.SendMessage(conv.ID, DummyValue)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -352,8 +489,8 @@ func TestConversationService_ListMessages(t *testing.T) {
 	t.Run("panics when empty conversation ID", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFake())
 
 		// Act & Assert
 		assert.Panics(t, func() {
@@ -363,8 +500,8 @@ func TestConversationService_ListMessages(t *testing.T) {
 	t.Run("returns error when conversation doesn't exist", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		_ = db.Open(DummyUser)
-		svc := NewConversationService(db)
+		_ = db.Open(DummyValue)
+		svc := NewConversationService(db, apiclient.NewFake())
 
 		// Act
 		messages, err := svc.ListMessages("123")
@@ -375,14 +512,14 @@ func TestConversationService_ListMessages(t *testing.T) {
 	})
 	t.Run("returns error when database query fails", func(t *testing.T) {
 		// Arrange
-		conv := Conversation{ID: "acb"}
+		conv := models.Conversation{ID: "123"}
 		bytes, err := conv.Serialize()
 		require.NoError(t, err)
 		db := &database.Stub{
 			ReadResult: bytes,
 			QueryErr:   errors.New("query err"),
 		}
-		svc := NewConversationService(db)
+		svc := NewConversationService(db, apiclient.NewFake())
 		require.NoError(t, err)
 
 		// Act
@@ -392,4 +529,12 @@ func TestConversationService_ListMessages(t *testing.T) {
 		assert.Error(t, err)
 		assert.Empty(t, got)
 	})
+}
+
+func mustMarshal(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal: %v", err))
+	}
+	return b
 }

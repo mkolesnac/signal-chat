@@ -2,20 +2,19 @@ package api
 
 type SignUpResponse struct {
 	UserID string `json:"userId"`
-	Error  string `json:"error"`
+	Error  string `json:"error,omitempty"`
 }
 
 type SignInResponse struct {
 	UserID   string `json:"userId"`
 	Username string `json:"username"`
 	Avatar   string `json:"avatar"`
-	Error    string `json:"error"`
+	Error    string `json:"error,omitempty"`
 }
 
 type GetUserResponse struct {
 	Username string `json:"username"`
-	Avatar   string `json:"avatar"`
-	Error    string `json:"error"`
+	Error    string `json:"error,omitempty"`
 }
 
 type CreateUserResponse struct {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"signal-chat/internal/api"
 	"testing"
 )
 
@@ -51,7 +52,7 @@ func TestUserService_GetUser(t *testing.T) {
 	t.Run("returns error when api client fails to send request", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.GetErr = errors.New("get error")
+		ac.GetErrors[api.EndpointUser] = errors.New("get error")
 		svc := UserService{apiClient: ac}
 
 		// Act
@@ -63,7 +64,9 @@ func TestUserService_GetUser(t *testing.T) {
 	t.Run("returns error when server returns unsuccessful response", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.PostStatus = http.StatusInternalServerError
+		ac.PostResponses[api.EndpointUser] = apiclient.StubResponse{
+			StatusCode: http.StatusInternalServerError,
+		}
 		svc := UserService{apiClient: ac}
 
 		// Act

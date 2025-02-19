@@ -70,7 +70,6 @@ func TestAuth_SignUp(t *testing.T) {
 		var payload api.SignUpRequest
 		err = json.Unmarshal(requests[0].PayloadJSON, &payload)
 		require.NoError(t, err)
-		assert.NotEmpty(t, requests[0].Headers["Authorization"], "authorization header should be set")
 		assert.Equal(t, "test@user.com", payload.UserName)
 		assert.Equal(t, "password123", payload.Password)
 	})
@@ -140,7 +139,7 @@ func TestAuth_SignUp(t *testing.T) {
 	t.Run("returns error when api client fails to send request", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.PostErr = errors.New("post error")
+		ac.PostErrors[api.EndpointSignUp] = errors.New("post error")
 		auth := Auth{db: database.NewFake(), apiClient: ac}
 
 		// Act
@@ -152,7 +151,24 @@ func TestAuth_SignUp(t *testing.T) {
 	t.Run("returns error when server returns unsuccessful response", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.PostStatus = http.StatusInternalServerError
+		ac.PostResponses[api.EndpointSignUp] = apiclient.StubResponse{
+			StatusCode: http.StatusInternalServerError,
+		}
+		auth := Auth{db: database.NewFake(), apiClient: ac}
+
+		// Act
+		_, err := auth.SignUp(DummyEmail, DummyPassword)
+
+		// Assert
+		assert.Error(t, err)
+	})
+	t.Run("returns error when server returns invalid response", func(t *testing.T) {
+		// Arrange
+		ac := apiclient.NewStub()
+		ac.PostResponses[api.EndpointSignUp] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       []byte("invalid response"),
+		}
 		auth := Auth{db: database.NewFake(), apiClient: ac}
 
 		// Act
@@ -265,7 +281,7 @@ func TestAuth_SignIn(t *testing.T) {
 	t.Run("returns error when api client fails to send request", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.PostErr = errors.New("post error")
+		ac.PostErrors[api.EndpointSignIn] = errors.New("test error")
 		auth := Auth{db: database.NewFake(), apiClient: ac}
 
 		// Act
@@ -274,10 +290,27 @@ func TestAuth_SignIn(t *testing.T) {
 		// Assert
 		assert.Error(t, err)
 	})
-	t.Run("returns error when user doesn't exist", func(t *testing.T) {
+	t.Run("returns error when server returns unsuccessful response", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.PostStatus = http.StatusInternalServerError
+		ac.PostResponses[api.EndpointSignIn] = apiclient.StubResponse{
+			StatusCode: http.StatusInternalServerError,
+		}
+		auth := Auth{db: database.NewFake(), apiClient: ac}
+
+		// Act
+		_, err := auth.SignIn(DummyEmail, DummyPassword)
+
+		// Assert
+		assert.Error(t, err)
+	})
+	t.Run("returns error when server returns invalid response", func(t *testing.T) {
+		// Arrange
+		ac := apiclient.NewStub()
+		ac.PostResponses[api.EndpointSignIn] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       []byte("invalid response"),
+		}
 		auth := Auth{db: database.NewFake(), apiClient: ac}
 
 		// Act
@@ -319,7 +352,7 @@ func TestAuth_SignOut(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
-		_, err = ac.Post("/test", struct{}{}, nil)
+		_, _, err = ac.Post("/test", struct{}{})
 		assert.NoError(t, err)
 		requests := ac.Requests()
 		require.Len(t, requests, 2, "sign out request should have been sent after signup request")

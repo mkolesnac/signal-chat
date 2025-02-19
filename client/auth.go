@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/crossle/libsignal-protocol-go/keys/identity"
@@ -9,8 +10,8 @@ import (
 	"github.com/crossle/libsignal-protocol-go/util/keyhelper"
 	"net/http"
 	"regexp"
-	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"signal-chat/client/models"
 	"signal-chat/internal/api"
 	"strconv"
 )
@@ -18,10 +19,10 @@ import (
 var ErrAuthInvalidEmail = errors.New("email is not a valid email address")
 var ErrAuthPwdTooShort = errors.New("password too short")
 
-type AuthAPIClient interface {
-	apiclient.Client
-	SetAuthorization(username, password string)
-	ClearAuthorization()
+type AuthAPI interface {
+	StartSession(username, password string) error
+	Close() error
+	Post(route string, payload any) (int, []byte, error)
 }
 
 type AuthDatabase interface {
@@ -32,41 +33,41 @@ type AuthDatabase interface {
 
 type Auth struct {
 	db        AuthDatabase
-	apiClient AuthAPIClient
+	apiClient AuthAPI
 	signedIn  bool
 }
 
-func NewAuth(db AuthDatabase, apiClient AuthAPIClient) *Auth {
+func NewAuth(db AuthDatabase, apiClient AuthAPI) *Auth {
 	return &Auth{db: db, apiClient: apiClient}
 }
 
-func (a *Auth) SignUp(email, pwd string) (User, error) {
+func (a *Auth) SignUp(email, pwd string) (models.User, error) {
 	if !isValidEmail(email) {
-		return User{}, ErrAuthInvalidEmail
+		return models.User{}, ErrAuthInvalidEmail
 	}
 	if len(pwd) < 8 {
-		return User{}, ErrAuthPwdTooShort
+		return models.User{}, ErrAuthPwdTooShort
 	}
 
 	err := a.db.Open(email)
 	if err != nil {
-		return User{}, fmt.Errorf("failed to open user database: %w", err)
+		return models.User{}, fmt.Errorf("failed to open user database: %w", err)
 	}
 
 	ik, err := a.storeIdentityKey()
 	if err != nil {
-		return User{}, err
+		return models.User{}, err
 	}
 
 	serializer := serialize.NewJSONSerializer()
 	spk, err := a.storeSignedPreKey(ik, serializer)
 	if err != nil {
-		return User{}, err
+		return models.User{}, err
 	}
 
 	preKeys, err := a.storePreKeys(serializer)
 	if err != nil {
-		return User{}, err
+		return models.User{}, err
 	}
 
 	spkSignature := spk.Signature()
@@ -88,35 +89,43 @@ func (a *Auth) SignUp(email, pwd string) (User, error) {
 		})
 	}
 
-	a.apiClient.SetAuthorization(email, pwd)
-	var resp api.SignUpResponse
-	status, err := a.apiClient.Post(api.EndpointSignUp, payload, &resp)
+	status, body, err := a.apiClient.Post(api.EndpointSignUp, payload)
 	if err != nil {
-		return User{}, fmt.Errorf("got error from server: %w", err)
+		return models.User{}, fmt.Errorf("got error from server: %w", err)
 	}
 	if status != http.StatusOK {
-		return User{}, fmt.Errorf("server returned error: %s", resp.Error)
+		return models.User{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
+	}
+	var resp api.SignUpResponse
+	err = json.Unmarshal(body, &resp)
+	if err != nil {
+		return models.User{}, fmt.Errorf("got error unmarshalling response from server: %w", err)
+	}
+
+	err = a.apiClient.StartSession(email, pwd)
+	if err != nil {
+		return models.User{}, fmt.Errorf("failed to start API session: %w", err)
 	}
 
 	a.signedIn = true
-	user := User{
+	user := models.User{
 		ID:       resp.UserID,
 		Username: email,
 	}
 	return user, nil
 }
 
-func (a *Auth) SignIn(email, pwd string) (User, error) {
+func (a *Auth) SignIn(email, pwd string) (models.User, error) {
 	if !isValidEmail(email) {
-		return User{}, ErrAuthInvalidEmail
+		return models.User{}, ErrAuthInvalidEmail
 	}
 	if len(pwd) < 8 {
-		return User{}, ErrAuthPwdTooShort
+		return models.User{}, ErrAuthPwdTooShort
 	}
 
 	err := a.db.Open(email)
 	if err != nil {
-		return User{}, fmt.Errorf("failed to open user database: %w", err)
+		return models.User{}, fmt.Errorf("failed to open user database: %w", err)
 	}
 
 	payload := api.SignInRequest{
@@ -124,19 +133,26 @@ func (a *Auth) SignIn(email, pwd string) (User, error) {
 		Password: pwd,
 	}
 
-	a.apiClient.SetAuthorization(email, pwd)
-	var resp api.SignInResponse
-	status, err := a.apiClient.Post(api.EndpointSignIn, payload, &resp)
+	status, body, err := a.apiClient.Post(api.EndpointSignIn, payload)
 	if err != nil {
-
-		return User{}, fmt.Errorf("got error from server: %w", err)
+		return models.User{}, fmt.Errorf("got error from server: %w", err)
 	}
 	if status != http.StatusOK {
-		return User{}, fmt.Errorf("server returned error: %s", resp.Error)
+		return models.User{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
+	}
+	var resp api.SignInResponse
+	err = json.Unmarshal(body, &resp)
+	if err != nil {
+		return models.User{}, fmt.Errorf("got error unmarshalling response from server: %w", err)
+	}
+
+	err = a.apiClient.StartSession(email, pwd)
+	if err != nil {
+		return models.User{}, fmt.Errorf("failed to start API session: %w", err)
 	}
 
 	a.signedIn = true
-	user := User{
+	user := models.User{
 		ID:       resp.UserID,
 		Username: resp.Username,
 	}
@@ -148,11 +164,13 @@ func (a *Auth) SignOut() error {
 		panic("not signed in")
 	}
 
-	err := a.db.Close()
-	if err != nil {
+	if err := a.apiClient.Close(); err != nil {
+		return fmt.Errorf("failed to close API session: %w", err)
+	}
+
+	if err := a.db.Close(); err != nil {
 		return fmt.Errorf("failed to close database: %w", err)
 	}
-	a.apiClient.ClearAuthorization()
 
 	return nil
 }

@@ -1,29 +1,42 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"signal-chat/client/apiclient"
+	"signal-chat/client/models"
 	"signal-chat/internal/api"
 )
 
-type UserService struct {
-	apiClient apiclient.Client
+type UserAPI interface {
+	Get(route string) (int, []byte, error)
 }
 
-func (u *UserService) GetUser(id string) (User, error) {
-	requireNonEmpty("id", id)
+type UserService struct {
+	apiClient UserAPI
+}
 
-	var resp api.GetUserResponse
-	status, err := u.apiClient.Get(api.EndpointUser+"/"+id, &resp)
+func NewUserService(apiClient UserAPI) *UserService {
+	return &UserService{apiClient: apiClient}
+}
+
+func (u *UserService) GetUser(id string) (models.User, error) {
+	panicIfEmpty("id", id)
+
+	status, body, err := u.apiClient.Get(api.EndpointUser + "/" + id)
 	if err != nil {
-		return User{}, fmt.Errorf("failed to get user: %w", err)
+		return models.User{}, fmt.Errorf("failed to get user: %w", err)
 	}
 	if status != http.StatusOK {
-		return User{}, fmt.Errorf("server returned error: %s", resp.Error)
+		return models.User{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
+	}
+	var resp api.GetUserResponse
+	err = json.Unmarshal(body, &resp)
+	if err != nil {
+		return models.User{}, fmt.Errorf("failed to unmarshal user response: %w", err)
 	}
 
-	return User{
+	return models.User{
 		ID:       id,
 		Username: resp.Username,
 	}, nil
