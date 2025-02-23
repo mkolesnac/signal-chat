@@ -5,6 +5,7 @@ import (
 	"embed"
 	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -22,14 +23,20 @@ func main() {
 	conversations := NewConversationService(db, ac)
 	users := NewUserService(ac)
 
-	usr1, _ := auth.SignUp("mkolesnac@gmail.com", "test1234")
 	usr2, _ := auth.SignUp("test@gmail.com", "test1234")
-	conv, _ := conversations.CreateConversation("Hello world!", usr2.ID)
-	_, _ = conversations.SendMessage(conv.ID, "Followup message")
+	usr1, _ := auth.SignUp("mkolesnac@gmail.com", "test1234")
+
+	conv, _ := conversations.CreateConversation("First message!", usr2.ID)
+	_, _ = auth.SignIn("test@gmail.com", "test1234")
+	time.Sleep(time.Millisecond)
+	msg, _ := conversations.SendMessage(conv.ID, "Followup message")
 	_ = usr1
 	_ = usr2
 
+	_ = msg
+
 	app := NewApp()
+	ac.SetErrorHandler(app.EmitWebSocketError)
 
 	// Create application with options
 	err := wails.Run(&options.App{

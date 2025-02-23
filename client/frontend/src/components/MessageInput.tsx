@@ -10,22 +10,25 @@ import FormatItalicRoundedIcon from '@mui/icons-material/FormatItalicRounded';
 import StrikethroughSRoundedIcon from '@mui/icons-material/StrikethroughSRounded';
 import FormatListBulletedRoundedIcon from '@mui/icons-material/FormatListBulletedRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import { useState } from 'react'
 
 export type MessageInputProps = {
-  textAreaValue: string;
-  setTextAreaValue: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (text: string) => void;
 };
 
 export default function MessageInput(props: MessageInputProps) {
-  const { textAreaValue, setTextAreaValue, onSubmit } = props;
+  const [value, setValue] = useState('')
+  const { onSubmit } = props;
   const textAreaRef = React.useRef<HTMLDivElement>(null);
+
   const handleClick = () => {
-    if (textAreaValue.trim() !== '') {
-      onSubmit();
-      setTextAreaValue('');
+    console.log("input: %o", textAreaRef.current)
+    if (value.trim() !== '') {
+      onSubmit(value);
+      setValue('');
     }
   };
+
   return (
     <Box sx={{ px: 2, pb: 3 }}>
       <FormControl>
@@ -33,12 +36,12 @@ export default function MessageInput(props: MessageInputProps) {
           placeholder="Type something here…"
           aria-label="Message"
           ref={textAreaRef}
-          onChange={(event) => {
-            setTextAreaValue(event.target.value);
-          }}
-          value={textAreaValue}
           minRows={3}
           maxRows={10}
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+          }}
           endDecorator={
             <Stack
               direction="row"

@@ -12,6 +12,7 @@ import (
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
 	"testing"
+	"time"
 )
 
 const (
@@ -32,7 +33,7 @@ func TestNewConversationService(t *testing.T) {
 				MessageID:      "abc",
 				MessageText:    "First message!",
 				MessagePreview: "First...",
-				Timestamp:      "2024-02-16T10:00:00Z",
+				Timestamp:      time.Now().UnixMilli(),
 			}},
 		}
 		ac.WSMessages = []api.WSMessage{{
@@ -74,7 +75,7 @@ func TestNewConversationService(t *testing.T) {
 				MessageID:      "abc",
 				MessageText:    "First message!",
 				MessagePreview: "First...",
-				Timestamp:      "2024-02-16T10:00:00Z",
+				Timestamp:      time.Now().UnixMilli(),
 			}},
 			NewMessages: []api.WSNewMessagePayload{{
 				ConversationID: "123",
@@ -82,7 +83,7 @@ func TestNewConversationService(t *testing.T) {
 				SenderID:       "bob",
 				Text:           "Second message!",
 				Preview:        "Second...",
-				Timestamp:      "2024-03-16T10:00:00Z",
+				Timestamp:      time.Now().UnixMilli(),
 			}},
 		}
 		ac.WSMessages = []api.WSMessage{{
@@ -129,7 +130,7 @@ func TestNewConversationService(t *testing.T) {
 				MessageID:      "abc",
 				MessageText:    "First message!",
 				MessagePreview: "First...",
-				Timestamp:      "2024-02-16T10:00:00Z",
+				Timestamp:      time.Now().UnixMilli(),
 			}},
 		}
 		ac.WSMessages = []api.WSMessage{{
@@ -156,15 +157,18 @@ func TestConversationService_ListConversations(t *testing.T) {
 		require.NoError(t, err)
 		conv2, err := svc.CreateConversation("First message", "tom")
 		require.NoError(t, err)
+		conv3, err := svc.CreateConversation("First message", "alice")
+		require.NoError(t, err)
 
 		// Act
 		conversations, err := svc.ListConversations()
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Len(t, conversations, 2)
+		assert.Len(t, conversations, 3)
 		assert.Contains(t, conversations, conv1)
 		assert.Contains(t, conversations, conv2)
+		assert.Contains(t, conversations, conv3)
 	})
 	t.Run("returns empty list when no conversations exist", func(t *testing.T) {
 		// Arrange
@@ -218,7 +222,7 @@ func TestConversationService_CreateConversation(t *testing.T) {
 			MessageID:      DummyValue,
 			SenderID:       "current-user",
 			ParticipantIDs: []string{"current-user", "bob"},
-			Timestamp:      "2024-02-16T10:00:00Z",
+			Timestamp:      time.Now().UnixMilli(),
 		}
 		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
 			StatusCode: http.StatusOK,
@@ -251,7 +255,7 @@ func TestConversationService_CreateConversation(t *testing.T) {
 			MessageID:      "msg#123",
 			SenderID:       "current-user",
 			ParticipantIDs: []string{"current-user", "bob"},
-			Timestamp:      "2024-02-16T10:00:00Z",
+			Timestamp:      time.Now().UnixMilli(),
 		}
 		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
 			StatusCode: http.StatusOK,
@@ -337,7 +341,27 @@ func TestConversationService_SendMessage(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
+		ac := apiclient.NewStub()
+		resp := api.CreateMessageResponse{
+			MessageID: "123",
+			SenderID:  "465",
+			Timestamp: time.Now().UnixMilli(),
+		}
+		ac.PostResponses[api.EndpointMessages] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body:       mustMarshal(resp),
+		}
+		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
+			StatusCode: http.StatusOK,
+			Body: mustMarshal(api.CreateConversationResponse{
+				ConversationID: DummyValue,
+				MessageID:      DummyValue,
+				SenderID:       DummyValue,
+				ParticipantIDs: []string{DummyValue},
+				Timestamp:      time.Now().UnixMilli(),
+			}),
+		}
+		svc := NewConversationService(db, ac)
 		conv, err := svc.CreateConversation(DummyValue, DummyValue)
 		require.NoError(t, err)
 
@@ -346,9 +370,9 @@ func TestConversationService_SendMessage(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
-		assert.NotEmpty(t, msg.ID, "message ID returned from server should have been used")
-		assert.NotEmpty(t, msg.SenderID, "sender ID returned from server should have been used")
-		assert.NotEmpty(t, msg.Timestamp, "timestamp returned from server should have been used")
+		assert.Equal(t, resp.MessageID, msg.ID, "message ID returned from server should have been used")
+		assert.Equal(t, resp.SenderID, msg.SenderID, "sender ID returned from server should have been used")
+		assert.Equal(t, resp.Timestamp, msg.Timestamp, "timestamp returned from server should have been used")
 		assert.Equal(t, "Second message", msg.Text)
 		messages, err := svc.ListMessages(conv.ID)
 		require.NoError(t, err)
@@ -464,19 +488,15 @@ func TestConversationService_SendMessage(t *testing.T) {
 }
 
 func TestConversationService_ListMessages(t *testing.T) {
-	t.Run("returns all messages from the given conversation", func(t *testing.T) {
+	t.Run("returns all messages from the given conversation in chronological order", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
 		conv, err := svc.CreateConversation(DummyValue, DummyValue)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		msg, err := svc.SendMessage(conv.ID, DummyValue)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Act
 		messages, err := svc.ListMessages(conv.ID)

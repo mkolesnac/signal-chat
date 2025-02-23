@@ -9,7 +9,7 @@ type Conversation struct {
 	ID                   string
 	LastMessagePreview   string
 	LastMessageSenderID  string
-	LastMessageTimestamp string
+	LastMessageTimestamp int64
 	ParticipantIDs       []string
 }
 

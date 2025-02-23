@@ -2,8 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ListConversations } from '../../wailsjs/go/main/ConversationService'
 import { useEffect } from 'react'
 import { EventsOff, EventsOn } from '../../wailsjs/runtime'
-import { main } from '../../wailsjs/go/models'
-import Conversation = main.Conversation
+import { models } from '../../wailsjs/go/models'
+import Conversation = models.Conversation
 
 export function useConversations() {
   const queryClient = useQueryClient()

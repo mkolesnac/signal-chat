@@ -68,9 +68,6 @@ func NewFakeWithoutAuth() *Fake {
 }
 
 func (f *Fake) StartSession(username, password string) error {
-	if len(f.handlers) > 0 {
-		panic("Close connection of the previous user before starting a new session")
-	}
 	f.username = username
 	f.password = password
 	_, err := f.authenticate(f.username, f.password)
@@ -191,7 +188,7 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 
 		convID := uuid.New().String()
 		msgID := uuid.New().String()
-		timestamp := time.Now().Format(time.RFC3339)
+		timestamp := time.Now().UnixMilli()
 		participantIDs := append(req.RecipientIDs, sender.id)
 		syncData := f.userSyncData[sender.id]
 		syncData.NewConversations = append(syncData.NewConversations, api.WSNewConversationPayload{
@@ -217,6 +214,7 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 		return f.respond(http.StatusOK, api.CreateConversationResponse{
 			ConversationID: convID,
 			MessageID:      msgID,
+			SenderID:       sender.id,
 			ParticipantIDs: participantIDs,
 			Timestamp:      timestamp,
 		})
@@ -232,7 +230,7 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 		}
 
 		msgID := uuid.New().String()
-		timestamp := time.Now().Format(time.RFC3339)
+		timestamp := time.Now().UnixMilli()
 
 		for _, id := range conv.ParticipantIDs {
 			if id != sender.id {

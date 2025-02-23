@@ -1,30 +1,74 @@
-import * as React from 'react';
-import Box from '@mui/joy/Box';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
-import AvatarWithStatus from '../components/AvatarWithStatus';
-import ChatBubble from '../components/ChatBubble';
-import MessageInput from '../components/MessageInput';
-import MessagesPaneHeader from '../components/MessagesPaneHeader';
-import { ChatProps, MessageProps } from '../types';
+import * as React from 'react'
+import Box from '@mui/joy/Box'
+import Sheet from '@mui/joy/Sheet'
+import Stack from '@mui/joy/Stack'
+import ChatBubble from '../components/ChatBubble'
+import MessageInput from '../components/MessageInput'
 import { useParams } from 'react-router-dom'
-import { useConversations } from '../hooks/useConversations'
-import { useMessages } from '../hooks/useMessages'
-import Typography from '@mui/joy/Typography'
-import { main } from '../../wailsjs/go/models'
-import Message = main.Message
+import { useAuth } from '../contexts/AuthContext'
+import { Alert, Skeleton } from '@mui/joy'
+import { ListMessages, SendMessage } from '../../wailsjs/go/main/ConversationService'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { EventsOff, EventsOn } from '../../wailsjs/runtime'
+import { models } from '../../wailsjs/go/models'
+import Message = models.Message
 
-type MessagesPaneProps = {
-};
+function sortMessages(messages: Message[]) {
+  return messages.sort((a, b) => a.Timestamp - b.Timestamp)
+}
 
-export default function MessagesPane(props: MessagesPaneProps) {
+export default function MessagesPane() {
   const { conversationId } = useParams()
-  const { data: messages, isLoading, error } = useMessages(conversationId)
-  const [textAreaValue, setTextAreaValue] = React.useState('');
+  const queryClient = useQueryClient()
+  const {user: me} = useAuth()
+  const [pendingMessage, setPendingMessage] = useState<Message | undefined>()
 
-  // React.useEffect(() => {
-  //   setChatMessages(chat.messages);
-  // }, [chat.messages]);
+  const { data: messages, isLoading, isError, error } = useQuery({
+    queryKey: ['messages', conversationId],
+    queryFn: async ({queryKey}) => {
+      const messages = await ListMessages(queryKey[1]!)
+      return sortMessages(messages)
+    },
+    staleTime: Infinity,
+    enabled: !!conversationId,
+  })
+
+  const mutation = useMutation({
+    mutationFn: async (text: string) => SendMessage(conversationId!, text!),
+    onSuccess: (newMessage) => {
+      queryClient.setQueryData(['messages', conversationId], (old: Message[] | undefined) => {
+        if (!old) return [newMessage]
+        return sortMessages([...old, newMessage])
+      })
+    }
+  })
+
+  useEffect(() => {
+    EventsOn('message-added', (value: Message) => {
+      queryClient.setQueryData(['messages', conversationId], (old: Message[] | undefined) => {
+        if (!old) return [value]
+        return sortMessages([...old, value])
+      })
+    })
+
+    return () => {
+      EventsOff('message-added')
+    }
+  })
+
+  const handleSubmit = (text: string) => {
+    const msg = new Message({
+      ID: "temp",
+      Text: text,
+      SenderID: me?.ID,
+      Timestamp: new Date().toISOString()
+    })
+    setPendingMessage(msg)
+    mutation.mutate(text)
+  }
+
+  console.log("messages: %o", messages)
 
   return (
     <Sheet
@@ -48,49 +92,32 @@ export default function MessagesPane(props: MessagesPaneProps) {
       >
         <Stack spacing={2} sx={{ justifyContent: 'flex-end' }}>
           {isLoading && (
-            <Typography>Loading</Typography>
+            <>
+              <Skeleton sx={{maxWidth: '60%'}}/>{' '}
+              <Skeleton sx={{maxWidth: '60%'}}/>{' '}
+              <Skeleton sx={{maxWidth: '60%'}}/>{' '}
+            </>
           )}
           {!!error && (
-            <Typography>Error</Typography>
+            <Alert
+              variant="soft"
+              color="danger"
+              size="lg"
+            >
+              {(error as Error).message}
+            </Alert>
           )}
-          {!!messages && messages.map((message: Message, index: number) => {
-            const isYou = message.SenderID === 'You';
-            return (
-              <Stack
-                key={index}
-                direction="row"
-                spacing={2}
-                sx={{ flexDirection: isYou ? 'row-reverse' : 'row' }}
-              >
-                {/*{message.SenderID !== 'You' && (*/}
-                {/*  <AvatarWithStatus*/}
-                {/*    online={message.sender.online}*/}
-                {/*    src={message.sender.avatar}*/}
-                {/*  />*/}
-                {/*)}*/}
-                <ChatBubble variant={isYou ? 'sent' : 'received'} message={message}/>
-              </Stack>
-            );
-          })}
+          {messages?.map(message => (
+            <ChatBubble key={message.ID} message={message}/>
+          ))}
+          {mutation.isLoading && (
+            <ChatBubble message={pendingMessage!} sx={{opacity: 0.5}}/>
+          )}
         </Stack>
       </Box>
-      {/*<MessageInput*/}
-      {/*  textAreaValue={textAreaValue}*/}
-      {/*  setTextAreaValue={setTextAreaValue}*/}
-      {/*  onSubmit={() => {*/}
-      {/*    const newId = chatMessages.length + 1;*/}
-      {/*    const newIdString = newId.toString();*/}
-      {/*    setChatMessages([*/}
-      {/*      ...chatMessages,*/}
-      {/*      {*/}
-      {/*        id: newIdString,*/}
-      {/*        sender: 'You',*/}
-      {/*        content: textAreaValue,*/}
-      {/*        timestamp: 'Just now',*/}
-      {/*      },*/}
-      {/*    ]);*/}
-      {/*  }}*/}
-      {/*/>*/}
+      <MessageInput
+        onSubmit={handleSubmit}
+      />
     </Sheet>
   );
 }

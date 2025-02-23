@@ -1,11 +1,10 @@
-export namespace main {
+export namespace models {
 	
 	export class Conversation {
 	    ID: string;
 	    LastMessagePreview: string;
 	    LastMessageSenderID: string;
-	    // Go type: time
-	    LastMessageTimestamp: any;
+	    LastMessageTimestamp: number;
 	    ParticipantIDs: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -17,35 +16,15 @@ export namespace main {
 	        this.ID = source["ID"];
 	        this.LastMessagePreview = source["LastMessagePreview"];
 	        this.LastMessageSenderID = source["LastMessageSenderID"];
-	        this.LastMessageTimestamp = this.convertValues(source["LastMessageTimestamp"], null);
+	        this.LastMessageTimestamp = source["LastMessageTimestamp"];
 	        this.ParticipantIDs = source["ParticipantIDs"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class Message {
 	    ID: string;
-	    ConversationID: string;
 	    Text: string;
 	    SenderID: string;
-	    // Go type: time
-	    Timestamp: any;
+	    Timestamp: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Message(source);
@@ -54,33 +33,15 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ID = source["ID"];
-	        this.ConversationID = source["ConversationID"];
 	        this.Text = source["Text"];
 	        this.SenderID = source["SenderID"];
-	        this.Timestamp = this.convertValues(source["Timestamp"], null);
+	        this.Timestamp = source["Timestamp"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class User {
 	    ID: string;
 	    Username: string;
+	    Avatar: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new User(source);
@@ -90,6 +51,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ID = source["ID"];
 	        this.Username = source["Username"];
+	        this.Avatar = source["Avatar"];
 	    }
 	}
 

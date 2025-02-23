@@ -3,12 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"net/http"
 	"signal-chat/client/database"
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
-	"time"
 )
 
 type ConversationAPI interface {
@@ -201,10 +199,10 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 	}
 
 	msg := models.Message{
-		ID:        uuid.New().String(),
+		ID:        resp.MessageID,
 		Text:      messageText,
 		SenderID:  resp.SenderID,
-		Timestamp: time.Now().Format(time.RFC3339),
+		Timestamp: resp.Timestamp,
 	}
 
 	if err := c.writeMessage(conv.ID, msg); err != nil {

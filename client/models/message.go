@@ -9,7 +9,7 @@ type Message struct {
 	ID        string
 	Text      string
 	SenderID  string
-	Timestamp string
+	Timestamp int64
 }
 
 func (c *Message) Serialize() ([]byte, error) {
