@@ -17,6 +17,16 @@ type GetUserResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
+type ListUser struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+}
+
+type ListUsersResponse struct {
+	Users []ListUser `json:"users"`
+	Error string     `json:"error,omitempty"`
+}
+
 type CreateUserResponse struct {
 	ID string `json:"id"`
 }

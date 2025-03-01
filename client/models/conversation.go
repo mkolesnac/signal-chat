@@ -7,6 +7,7 @@ import (
 
 type Conversation struct {
 	ID                   string
+	Name                 string
 	LastMessagePreview   string
 	LastMessageSenderID  string
 	LastMessageTimestamp int64

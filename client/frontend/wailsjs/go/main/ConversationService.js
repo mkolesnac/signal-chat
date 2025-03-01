@@ -17,3 +17,7 @@ export function ListMessages(arg1) {
 export function SendMessage(arg1, arg2) {
   return window['go']['main']['ConversationService']['SendMessage'](arg1, arg2);
 }
+
+export function SetContext(arg1) {
+  return window['go']['main']['ConversationService']['SetContext'](arg1);
+}

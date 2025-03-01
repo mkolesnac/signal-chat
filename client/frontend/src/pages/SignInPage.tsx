@@ -13,7 +13,7 @@ import ColorSchemeToggle from '../components/ColorSchemeToggle'
 import { Alert, GlobalStyles } from '@mui/joy'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import {SignIn} from "../../wailsjs/go/main/Auth";
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ReportIcon from '@mui/icons-material/Report';
 import { useAuth } from '../contexts/AuthContext'
 
@@ -29,6 +29,19 @@ export default function SignInPage() {
   const {setUser} = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+
+
+  console.log("protected route")
+  useEffect(() => {
+    (async () => {
+      console.log("sign in")
+      const user = await SignIn("mkolesnac@gmail.com", "test1234");
+      console.log("user: %o", user)
+      setUser(user);
+      navigate('/', { replace: true });
+    })()
+  }, [])
+
 
   const handleSubmit = async (event: React.FormEvent<SignInFormElement>) => {
     event.preventDefault()

@@ -8,7 +8,9 @@ export function useUser(userId: string | undefined) {
   return useQuery({
     queryKey: ['users', userId],
     queryFn: async () => {
+      console.log("fetching user with ID: %o", userId)
       if (userId === me?.ID) {
+        console.log("returning me")
         return me
       }
       return await GetUser(userId!)

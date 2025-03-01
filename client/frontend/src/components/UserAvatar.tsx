@@ -1,12 +1,22 @@
 import * as React from 'react'
 import Avatar, { AvatarProps } from '@mui/joy/Avatar'
+import { useUser } from '../hooks/useUser'
+import { Skeleton } from '@mui/joy'
 
 type UserAvatarProps = AvatarProps & {
-  username: string;
+  id: string;
 };
 
-export default function UserAvatar(props: UserAvatarProps) {
-  const { username, ...other } = props;
+export default function UserAvatar({ id, ...rest }: UserAvatarProps) {
+  const { data, isFetching, error } = useUser(id)
+
+  if (isFetching || error) {
+    return (
+      <Avatar size='sm' {...rest}>
+        <Skeleton animation='wave' variant='circular'/>
+      </Avatar>
+    )
+  }
 
   const getInitials = (name: string) => {
     return name
@@ -41,8 +51,8 @@ export default function UserAvatar(props: UserAvatarProps) {
     return colors[colorIndex];
   };
 
-  const initials = getInitials(username);
-  const backgroundColor = generateColor(username);
+  const initials = getInitials(data!.Username!);
+  const backgroundColor = generateColor(data!.Username!);
 
   return (
     <Avatar
@@ -51,7 +61,7 @@ export default function UserAvatar(props: UserAvatarProps) {
         backgroundColor,
         color: 'white',
       }}
-      {...other}
+      {...rest}
     >
       {initials}
     </Avatar>

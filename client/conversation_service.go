@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"net/http"
 	"signal-chat/client/database"
 	"signal-chat/client/models"
@@ -15,17 +17,24 @@ type ConversationAPI interface {
 }
 
 type ConversationService struct {
+	ctx       context.Context
 	db        database.Store
 	apiClient ConversationAPI
 }
 
 func NewConversationService(db database.Store, apiClient ConversationAPI) *ConversationService {
 	svc := &ConversationService{db: db, apiClient: apiClient}
-	svc.apiClient.Subscribe(api.MessageTypeSync, svc.sync)
+	svc.apiClient.Subscribe(api.MessageTypeSync, svc.handleSync)
+	svc.apiClient.Subscribe(api.MessageTypeNewConversation, svc.handleNewConversation)
+	svc.apiClient.Subscribe(api.MessageTypeNewMessage, svc.handleNewMessage)
 	return svc
 }
 
-func (c *ConversationService) sync(data json.RawMessage) error {
+func (c *ConversationService) SetContext(ctx context.Context) {
+	c.ctx = ctx
+}
+
+func (c *ConversationService) handleSync(data json.RawMessage) error {
 	var s api.WSSyncData
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
@@ -33,23 +42,11 @@ func (c *ConversationService) sync(data json.RawMessage) error {
 
 	for _, payload := range s.NewConversations {
 		conv := models.Conversation{
-			ID:                   payload.ConversationID,
-			LastMessagePreview:   payload.MessagePreview,
-			LastMessageTimestamp: payload.Timestamp,
-			LastMessageSenderID:  payload.SenderID,
-			ParticipantIDs:       payload.ParticipantIDs,
+			ID:             payload.ConversationID,
+			Name:           payload.Name,
+			ParticipantIDs: payload.ParticipantIDs,
 		}
 		if err := c.writeConversation(conv); err != nil {
-			return err
-		}
-
-		msg := models.Message{
-			ID:        payload.MessageID,
-			Text:      payload.MessageText,
-			SenderID:  payload.SenderID,
-			Timestamp: payload.Timestamp,
-		}
-		if err := c.writeMessage(conv.ID, msg); err != nil {
 			return err
 		}
 	}
@@ -77,6 +74,61 @@ func (c *ConversationService) sync(data json.RawMessage) error {
 			return err
 		}
 	}
+
+	return nil
+}
+
+func (c *ConversationService) handleNewConversation(data json.RawMessage) error {
+	var p api.WSNewConversationPayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+
+	conv := models.Conversation{
+		ID:             p.ConversationID,
+		Name:           p.Name,
+		ParticipantIDs: p.ParticipantIDs,
+	}
+	if err := c.writeConversation(conv); err != nil {
+		return err
+	}
+
+	runtime.EventsEmit(c.ctx, "conversation_added", conv)
+
+	return nil
+}
+
+func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
+	var p api.WSNewMessagePayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+
+	conv, err := c.getConversation(p.ConversationID)
+	if err != nil {
+		return err
+	}
+
+	conv.LastMessagePreview = p.Preview
+	conv.LastMessageSenderID = p.SenderID
+	conv.LastMessageTimestamp = p.Timestamp
+	if err := c.writeConversation(conv); err != nil {
+		return err
+	}
+
+	runtime.EventsEmit(c.ctx, "conversation_updated", conv)
+
+	msg := models.Message{
+		ID:        p.MessageID,
+		Text:      p.Text,
+		SenderID:  p.SenderID,
+		Timestamp: p.Timestamp,
+	}
+	if err := c.writeMessage(conv.ID, msg); err != nil {
+		return err
+	}
+
+	runtime.EventsEmit(c.ctx, "message_added", msg)
 
 	return nil
 }
@@ -124,15 +176,15 @@ func (c *ConversationService) ListMessages(conversationID string) ([]models.Mess
 	return messages, nil
 }
 
-func (c *ConversationService) CreateConversation(messageText, recipientID string) (models.Conversation, error) {
-	panicIfEmpty("messageText", messageText)
-	panicIfEmpty("recipientID", recipientID)
+func (c *ConversationService) CreateConversation(name string, recipientIDs []string) (models.Conversation, error) {
+	panicIfEmpty("name", name)
+	if len(recipientIDs) == 0 {
+		panic("recipientIDs must not be empty")
+	}
 
-	msgPreview := messagePreview(messageText)
 	req := api.CreateConversationRequest{
-		RecipientIDs:   []string{recipientID},
-		MessageText:    messageText,
-		MessagePreview: msgPreview,
+		Name:         name,
+		RecipientIDs: recipientIDs,
 	}
 	status, body, err := c.apiClient.Post(api.EndpointConversations, req)
 	if err != nil {
@@ -148,23 +200,11 @@ func (c *ConversationService) CreateConversation(messageText, recipientID string
 	}
 
 	conv := models.Conversation{
-		ID:                   resp.ConversationID,
-		LastMessagePreview:   msgPreview,
-		LastMessageTimestamp: resp.Timestamp,
-		LastMessageSenderID:  resp.SenderID,
-		ParticipantIDs:       resp.ParticipantIDs,
+		ID:             resp.ConversationID,
+		Name:           name,
+		ParticipantIDs: resp.ParticipantIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
-		return models.Conversation{}, err
-	}
-
-	msg := models.Message{
-		ID:        resp.MessageID,
-		Text:      messageText,
-		SenderID:  resp.SenderID,
-		Timestamp: resp.Timestamp,
-	}
-	if err := c.writeMessage(conv.ID, msg); err != nil {
 		return models.Conversation{}, err
 	}
 
@@ -214,6 +254,10 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 	conv.LastMessageSenderID = msg.SenderID
 	if err := c.writeConversation(conv); err != nil {
 		return models.Message{}, err
+	}
+
+	if c.ctx != nil {
+		runtime.EventsEmit(c.ctx, "conversation_updated", conv)
 	}
 
 	return msg, nil

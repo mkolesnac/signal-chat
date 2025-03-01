@@ -5,6 +5,7 @@ type Stub struct {
 	CloseErr    error
 	ReadErr     error
 	WriteErr    error
+	WriteErrs   map[PrimaryKey]error
 	QueryErr    error
 	DeleteErr   error
 	ReadResult  []byte
@@ -12,7 +13,9 @@ type Stub struct {
 }
 
 func NewStub() *Stub {
-	return &Stub{}
+	return &Stub{
+		WriteErrs: make(map[PrimaryKey]error),
+	}
 }
 
 func (s *Stub) Open(userID string) error {
@@ -31,6 +34,9 @@ func (s *Stub) Read(pk PrimaryKey) ([]byte, error) {
 }
 
 func (s *Stub) Write(pk PrimaryKey, value []byte) error {
+	if err, ok := s.WriteErrs[pk]; ok {
+		return err
+	}
 	return s.WriteErr
 }
 

@@ -187,36 +187,25 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 		}
 
 		convID := uuid.New().String()
-		msgID := uuid.New().String()
-		timestamp := time.Now().UnixMilli()
 		participantIDs := append(req.RecipientIDs, sender.id)
 		syncData := f.userSyncData[sender.id]
 		syncData.NewConversations = append(syncData.NewConversations, api.WSNewConversationPayload{
 			ConversationID: convID,
+			Name:           req.Name,
 			ParticipantIDs: participantIDs,
-			SenderID:       sender.id,
-			MessageID:      msgID,
-			MessageText:    req.MessageText,
-			MessagePreview: req.MessagePreview,
-			Timestamp:      timestamp,
 		})
 		f.userSyncData[sender.id] = syncData
 
 		conv := models.Conversation{
-			ID:                   convID,
-			LastMessagePreview:   req.MessagePreview,
-			LastMessageSenderID:  sender.id,
-			LastMessageTimestamp: timestamp,
-			ParticipantIDs:       participantIDs,
+			ID:             convID,
+			Name:           req.Name,
+			ParticipantIDs: participantIDs,
 		}
 		f.conversations[convID] = conv
 
 		return f.respond(http.StatusOK, api.CreateConversationResponse{
 			ConversationID: convID,
-			MessageID:      msgID,
-			SenderID:       sender.id,
 			ParticipantIDs: participantIDs,
-			Timestamp:      timestamp,
 		})
 	case api.EndpointMessages:
 		req, ok := payload.(api.CreateMessageRequest)

@@ -2,6 +2,7 @@ export namespace models {
 	
 	export class Conversation {
 	    ID: string;
+	    Name: string;
 	    LastMessagePreview: string;
 	    LastMessageSenderID: string;
 	    LastMessageTimestamp: number;
@@ -14,6 +15,7 @@ export namespace models {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ID = source["ID"];
+	        this.Name = source["Name"];
 	        this.LastMessagePreview = source["LastMessagePreview"];
 	        this.LastMessageSenderID = source["LastMessageSenderID"];
 	        this.LastMessageTimestamp = source["LastMessageTimestamp"];
@@ -41,7 +43,6 @@ export namespace models {
 	export class User {
 	    ID: string;
 	    Username: string;
-	    Avatar: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new User(source);
@@ -51,7 +52,6 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ID = source["ID"];
 	        this.Username = source["Username"];
-	        this.Avatar = source["Avatar"];
 	    }
 	}
 

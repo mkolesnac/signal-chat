@@ -10,7 +10,7 @@ type CreateMessageResponse struct {
 	Error     string `json:"error,omitempty"`
 	MessageID string `json:"messageID,omitempty"`
 	SenderID  string `json:"senderID,omitempty"`
-	Timestamp string `json:"timestamp,omitempty"`
+	Timestamp int64  `json:"timestamp,omitempty"`
 }
 
 type WSNewMessagePayload struct {
@@ -19,5 +19,5 @@ type WSNewMessagePayload struct {
 	SenderID       string `json:"senderID"`
 	Text           string `json:"text"`
 	Preview        string `json:"preview"`
-	Timestamp      string `json:"timestamp"`
+	Timestamp      int64  `json:"timestamp"`
 }

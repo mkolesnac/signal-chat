@@ -40,15 +40,12 @@ export default function Timestamp(props: TimestampProps) {
   const { value, ...rest } = props
   const [timeText, setTimeText] = useState<string | undefined>()
 
-  console.log("Timestamp, value: %o, text: %o", value, timeText)
-
   useEffect(() => {
     const date = new Date(value)
     const now = new Date()
     const age = now.getTime() - date.getTime()
 
     setTimeText(getTimeText(value))
-    console.log("age: %o", getTimeText(value))
     // Only set up auto-update for recent messages
     if (age < 24 * 60 * 60 * 1000) {
       // less than 24 hours old

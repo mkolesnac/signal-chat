@@ -54,7 +54,7 @@ export default function ChatBubble(props: ChatBubbleProps) {
       ]}
     >
       {!fromMe && (
-        <UserAvatar username={sender!.Username}/>
+        <UserAvatar id={sender!.ID}/>
       )}
       <Box sx={{ maxWidth: '60%', minWidth: 'auto' }}>
         <Stack

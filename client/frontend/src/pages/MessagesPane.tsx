@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react'
 import { EventsOff, EventsOn } from '../../wailsjs/runtime'
 import { models } from '../../wailsjs/go/models'
 import Message = models.Message
+import { useDebounce } from 'use-debounce'
 
 function sortMessages(messages: Message[]) {
   return messages.sort((a, b) => a.Timestamp - b.Timestamp)
@@ -44,8 +45,10 @@ export default function MessagesPane() {
     }
   })
 
+  const [debouncedIsLoading] = useDebounce(isLoading, 300);
+
   useEffect(() => {
-    EventsOn('message-added', (value: Message) => {
+    EventsOn('message_added', (value: Message) => {
       queryClient.setQueryData(['messages', conversationId], (old: Message[] | undefined) => {
         if (!old) return [value]
         return sortMessages([...old, value])
@@ -53,7 +56,7 @@ export default function MessagesPane() {
     })
 
     return () => {
-      EventsOff('message-added')
+      EventsOff('message_added')
     }
   })
 
@@ -68,7 +71,7 @@ export default function MessagesPane() {
     mutation.mutate(text)
   }
 
-  console.log("messages: %o", messages)
+  console.log("loading: %o, debouncedIsLoading: %o", isLoading, debouncedIsLoading)
 
   return (
     <Sheet
@@ -91,11 +94,10 @@ export default function MessagesPane() {
         }}
       >
         <Stack spacing={2} sx={{ justifyContent: 'flex-end' }}>
-          {isLoading && (
+          {debouncedIsLoading && (
             <>
-              <Skeleton sx={{maxWidth: '60%'}}/>{' '}
-              <Skeleton sx={{maxWidth: '60%'}}/>{' '}
-              <Skeleton sx={{maxWidth: '60%'}}/>{' '}
+              <Skeleton variant="rectangular" width={0.4} height="3em" />
+              <Skeleton variant="rectangular" width={0.4} height="3em" sx={{alignSelf: 'end'}}/>
             </>
           )}
           {!!error && (

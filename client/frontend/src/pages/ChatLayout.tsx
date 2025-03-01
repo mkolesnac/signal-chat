@@ -1,16 +1,10 @@
-import * as React from 'react';
-import { Navigate, Outlet } from 'react-router-dom'
-import Sidebar from '../components/Sidebar'
-import Header from '../components/Header'
+import * as React from 'react'
+import { Outlet } from 'react-router-dom'
 import Box from '@mui/joy/Box'
-import { ChatProps } from '../types'
-import { chats } from '../data'
 import Sheet from '@mui/joy/Sheet'
-import ChatsPane from '../components/ChatsPane'
-import MessagesPane from './MessagesPane'
+import ConversationsPane from '../components/ConversationsPane'
 
 export default function ChatLayout() {
-  const [selectedChat, setSelectedChat] = React.useState<ChatProps>(chats[0]);
   return (
     <Sheet
       sx={{
@@ -35,11 +29,7 @@ export default function ChatLayout() {
           width: '100%'
         }}
       >
-        <ChatsPane
-          chats={chats}
-          selectedChatId={selectedChat.id}
-          setSelectedChat={setSelectedChat}
-        />
+        <ConversationsPane/>
       </Sheet>
       <Box component="main" className="MainContent">
         <Outlet/>
