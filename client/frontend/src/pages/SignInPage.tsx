@@ -30,19 +30,6 @@ export default function SignInPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
-
-  console.log("protected route")
-  useEffect(() => {
-    (async () => {
-      console.log("sign in")
-      const user = await SignIn("mkolesnac@gmail.com", "test1234");
-      console.log("user: %o", user)
-      setUser(user);
-      navigate('/', { replace: true });
-    })()
-  }, [])
-
-
   const handleSubmit = async (event: React.FormEvent<SignInFormElement>) => {
     event.preventDefault()
 

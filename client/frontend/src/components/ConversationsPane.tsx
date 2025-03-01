@@ -24,6 +24,7 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import AddCircleOutlinedIcon from '@mui/icons-material/AddCircleOutlined';
 import AddBoxIcon from '@mui/icons-material/AddBox';
 import { Add } from '@mui/icons-material'
+import UserProfileButton from './UserProfileButton'
 
 function sortConversations(conversations: Conversation[]) {
   return conversations.sort(
@@ -110,7 +111,7 @@ export default function ConversationsPane() {
         }}
       >
         <Box flex={"1 1 auto"}>
-          <UserAvatar id={me!.ID} size={"md"}/>
+          <UserProfileButton size={"md"}/>
         </Box>
         <Button size='sm' color='primary' startDecorator={<Add />} onClick={() => setNewDialogOpen(true)}>
           New
