@@ -17,13 +17,11 @@ const (
 	MessageTypeParticipantAdded WSMessageType = "participant_added"
 
 	// Client -> Server acknowledgments
-	MessageTypeSyncAck         WSMessageType = "sync_ack"
-	MessageTypeMessageAck      WSMessageType = "message_ack"
-	MessageTypeConversationAck WSMessageType = "conversation_ack"
-	MessageTypeParticipantAck  WSMessageType = "participant_ack"
+	MessageTypeAck WSMessageType = "ack"
 )
 
 type WSMessage struct {
+	ID   string          `json:"id"`
 	Type WSMessageType   `json:"type"`
 	Data json.RawMessage `json:"data"`
 }
@@ -31,4 +29,10 @@ type WSMessage struct {
 type WSSyncData struct {
 	NewConversations []WSNewConversationPayload `json:"newConversations"`
 	NewMessages      []WSNewMessagePayload      `json:"newMessages"`
+}
+
+type WSAcknowledgementPayload struct {
+	Type      WSMessageType `json:"type"`      // The Type of the acknowledged message
+	ID        string        `json:"id"`        // The ID of the acknowledged message
+	Timestamp int64         `json:"timestamp"` // When the acknowledgement was sent
 }

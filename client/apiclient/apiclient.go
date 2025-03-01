@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"io"
 	"net/http"
 	"signal-chat/internal/api"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +19,7 @@ type APIClient struct {
 	authToken  string
 	HttpClient *http.Client
 	WSConn     *websocket.Conn
+	wsLock     sync.Mutex
 	handlers   map[api.WSMessageType]api.WSHandler
 	onWSError  api.WSErrorHandler
 }
@@ -162,6 +165,11 @@ func (a *APIClient) listenWebSocket() {
 			err = handler(msg.Data)
 			if err != nil {
 				a.handleWSError(err)
+			} else {
+				// Only send ACK after successful processing
+				if err := a.sendAcknowledgement(msg); err != nil {
+					a.handleWSError(fmt.Errorf("failed to send acknowledgement: %w", err))
+				}
 			}
 		}
 	}
@@ -208,4 +216,31 @@ func (a *APIClient) handleWSError(err error) {
 	} else {
 		panic(fmt.Errorf("unhlandled websocket error: %w", err))
 	}
+}
+
+func (a *APIClient) sendAcknowledgement(original api.WSMessage) error {
+	ack := api.WSAcknowledgementPayload{
+		ID:        original.ID,
+		Type:      original.Type,
+		Timestamp: time.Now().UnixMilli(),
+	}
+	data, err := json.Marshal(ack)
+	if err != nil {
+		return fmt.Errorf("failed to marshal acknowledgement: %w", err)
+	}
+
+	msg := api.WSMessage{
+		ID:   uuid.NewString(), // Generate a new ID for the ACK message
+		Type: api.MessageTypeAck,
+		Data: data,
+	}
+
+	a.wsLock.Lock() // Add a mutex to protect concurrent writes
+	defer a.wsLock.Unlock()
+
+	if a.WSConn == nil {
+		return fmt.Errorf("websocket connection is not established")
+	}
+
+	return a.WSConn.WriteJSON(msg)
 }

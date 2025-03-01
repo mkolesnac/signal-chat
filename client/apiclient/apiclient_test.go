@@ -147,7 +147,7 @@ func TestAPIClient_StartSession(t *testing.T) {
 	})
 }
 
-func TestAPIClient_Subscribe(t *testing.T) {
+func TestAPIClient_WebsocketHandlers(t *testing.T) {
 	t.Run("handler is called when message is received", func(t *testing.T) {
 		// Arrange
 		event := api.MessageTypeSync
@@ -180,6 +180,46 @@ func TestAPIClient_Subscribe(t *testing.T) {
 			assert.JSONEq(t, string(payload), string(got))
 		case <-time.After(time.Second):
 			assert.Fail(t, "timeout waiting for message")
+		}
+	})
+	t.Run("sends ACK message to server when handler completes without error", func(t *testing.T) {
+		// Arrange
+		ackReceived := make(chan api.WSMessage)
+		wsMessage := api.WSMessage{ID: "123", Type: api.MessageTypeSync, Data: json.RawMessage(`{"value": "test"}`)}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u := websocket.Upgrader{
+				CheckOrigin: func(r *http.Request) bool { return true },
+			}
+			conn, err := u.Upgrade(w, r, nil)
+			require.NoError(t, err)
+			err = conn.WriteJSON(wsMessage)
+			require.NoError(t, err)
+
+			ack := api.WSMessage{}
+			err = conn.ReadJSON(&ack)
+			require.NoError(t, err)
+			ackReceived <- ack
+		}))
+		defer server.Close()
+		client := NewAPIClient(server.URL)
+
+		// Act
+		client.Subscribe(api.MessageTypeSync, func(data json.RawMessage) error { return nil })
+		// Start listening after subscribing
+		err := client.StartSession(DummyUsername, DummyPassword)
+		require.NoError(t, err)
+
+		// Assert
+		select {
+		case ack := <-ackReceived:
+			var ackPayload api.WSAcknowledgementPayload
+			err := json.Unmarshal(ack.Data, &ackPayload)
+			assert.NoError(t, err)
+			assert.Equal(t, ack.Type, api.MessageTypeAck)
+			assert.Equal(t, ackPayload.ID, wsMessage.ID, "ACK payload ID should be the ID of the original message")
+			assert.Equal(t, ackPayload.Type, wsMessage.Type, "ACK payload type should be the Type of the original message")
+		case <-time.After(time.Second):
+			assert.Fail(t, "timeout waiting for ACK message")
 		}
 	})
 	t.Run("multiple handlers for multiple events", func(t *testing.T) {
@@ -258,7 +298,10 @@ func TestAPIClient_Subscribe(t *testing.T) {
 			assert.False(t, handlerCalled, "handler was called for wrong event type")
 		}
 	})
-	t.Run("panics when called after connection was established", func(t *testing.T) {
+}
+
+func TestAPIClient_Subscribe(t *testing.T) {
+	t.Run("panics when called after websocket connection has been established", func(t *testing.T) {
 		// Arrange
 		msg := api.WSMessage{Type: "test_event", Data: json.RawMessage(`{"data": "test"}`)}
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
