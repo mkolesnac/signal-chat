@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+type Client interface {
+	Get(route string) (int, []byte, error)
+	Post(route string, payload any) (int, []byte, error)
+}
+
 type APIClient struct {
 	ServerURL  string
 	authToken  string

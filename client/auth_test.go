@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"signal-chat/client/encryption"
 	"signal-chat/internal/api"
 	"testing"
 )
@@ -31,33 +31,26 @@ func TestAuth_SignUp(t *testing.T) {
 
 		assert.ErrorIs(t, err, ErrAuthPwdTooShort)
 	})
-	t.Run("generates key pairs and writes them to db", func(t *testing.T) {
-		// Arrange
-		db := database.NewFake()
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
-
-		// Act
-		_, err := auth.SignUp(DummyEmail, DummyPassword)
-
-		// Assert
-		assert.NoError(t, err)
-		v, err := db.Read(database.PrivateIdentityKeyPK())
-		assert.NoError(t, err)
-		assert.NotEmpty(t, v)
-		v, err = db.Read(database.PublicIdentityKeyPK())
-		assert.NoError(t, err)
-		assert.NotEmpty(t, v)
-		keys, err := db.Query(database.SignedPreKeyPK(""))
-		assert.NoError(t, err)
-		assert.Len(t, keys, 1)
-		keys, err = db.Query(database.PreKeyPK(""))
-		assert.NoError(t, err)
-		assert.Len(t, keys, 100)
-	})
-	t.Run("sends signup request with authorization and credentials to server", func(t *testing.T) {
+	t.Run("sends signup request with credentials and key bundle to server", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewFake()
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		bundle := api.KeyBundle{
+			RegistrationID: 0,
+			IdentityKey:    randomBytes(32),
+			SignedPreKey: api.SignedPreKey{
+				ID:        0,
+				PublicKey: randomBytes(32),
+				Signature: randomBytes(64),
+			},
+			PreKeys: []api.PreKey{{
+				ID:        0,
+				PublicKey: randomBytes(32),
+			}},
+		}
+		encrypt := &encryption.ManagerStub{
+			InitializeKeyStoreResult: bundle,
+		}
+		auth := NewAuth(database.NewFake(), ac, encrypt)
 
 		// Act
 		_, err := auth.SignUp("test@user.com", "password123")
@@ -72,37 +65,11 @@ func TestAuth_SignUp(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "test@user.com", payload.UserName)
 		assert.Equal(t, "password123", payload.Password)
-	})
-	t.Run("includes public keys in signup request", func(t *testing.T) {
-		// Arrange
-		ac := apiclient.NewFake()
-		auth := Auth{db: database.NewFake(), apiClient: ac}
-
-		// Act
-		_, err := auth.SignUp(DummyEmail, DummyPassword)
-
-		// Assert
-		assert.NoError(t, err)
-
-		requests := ac.Requests()
-		require.Len(t, requests, 1, "request should have been sent")
-		var payload api.SignUpRequest
-		err = json.Unmarshal(requests[0].PayloadJSON, &payload)
-		require.NoError(t, err)
-		assert.Len(t, payload.IdentityPublicKey, 33, "curve25519 public keys should be 33 bytes long")
-		assert.Equal(t, payload.IdentityPublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
-		assert.Len(t, payload.SignedPreKey.PublicKey, 33, "curve25519 public keys should be 33 bytes long")
-		assert.Equal(t, payload.SignedPreKey.PublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
-		assert.Len(t, payload.SignedPreKey.Signature, 64, "Signed prekey signature should be 64 byte long")
-		assert.Len(t, payload.PreKeys, 100, "Request should contain 100 pre keys")
-		for _, preKey := range payload.PreKeys {
-			assert.Len(t, preKey.PublicKey, 33, "curve25519 public keys should be 33 bytes long")
-			assert.Equal(t, preKey.PublicKey[0], byte(ecc.DjbType), "curve25519 public keys should start with byte 0x05")
-		}
+		assert.Equal(t, bundle, payload.KeyBundle)
 	})
 	t.Run("returns registered user on successful response from server", func(t *testing.T) {
 		// Arrange
-		auth := Auth{db: database.NewFake(), apiClient: apiclient.NewFake()}
+		auth := NewAuth(database.NewFake(), apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		user, err := auth.SignUp("test@user.com", DummyPassword)
@@ -116,19 +83,7 @@ func TestAuth_SignUp(t *testing.T) {
 		// Arrange
 		db := database.NewStub()
 		db.OpenErr = errors.New("open error")
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
-
-		// Act
-		_, err := auth.SignUp(DummyEmail, DummyPassword)
-
-		// Assert
-		assert.Error(t, err)
-	})
-	t.Run("returns error when database fails to write", func(t *testing.T) {
-		// Arrange
-		db := database.NewStub()
-		db.WriteErr = errors.New("write error")
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
+		auth := NewAuth(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
@@ -140,7 +95,22 @@ func TestAuth_SignUp(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
 		ac.PostErrors[api.EndpointSignUp] = errors.New("post error")
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
+
+		// Act
+		_, err := auth.SignUp(DummyEmail, DummyPassword)
+
+		// Assert
+		assert.Error(t, err)
+	})
+	t.Run("returns error when encryption key bundle fails to be generated", func(t *testing.T) {
+		// Arrange
+		db := database.NewStub()
+		db.OpenErr = errors.New("open error")
+		en := &encryption.ManagerStub{
+			InitializeKeyStoreError: errors.New("test error"),
+		}
+		auth := NewAuth(db, apiclient.NewFake(), en)
 
 		// Act
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
@@ -154,7 +124,7 @@ func TestAuth_SignUp(t *testing.T) {
 		ac.PostResponses[api.EndpointSignUp] = apiclient.StubResponse{
 			StatusCode: http.StatusInternalServerError,
 		}
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
@@ -169,7 +139,7 @@ func TestAuth_SignUp(t *testing.T) {
 			StatusCode: http.StatusOK,
 			Body:       []byte("invalid response"),
 		}
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
@@ -202,7 +172,7 @@ func TestAuth_SignIn(t *testing.T) {
 	t.Run("can read user data after opening database", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
+		auth := NewAuth(db, apiclient.NewFake(), encryption.NewManagerFake())
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
 		require.NoError(t, err)
 
@@ -211,12 +181,12 @@ func TestAuth_SignIn(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
-		assert.NotPanics(t, func() { _, _ = db.Read(database.PrivateIdentityKeyPK()) }, "Read should not panic if database connection was opened")
+		assert.NotPanics(t, func() { _, _ = db.Read("test") }, "Read should not panic if database connection was opened")
 	})
 	t.Run("sends sign in request with user credentials to server", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewFake()
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 		email := "test@user.com"
 		pwd := "password123"
 		_, err := auth.SignUp(email, pwd)
@@ -241,7 +211,7 @@ func TestAuth_SignIn(t *testing.T) {
 	})
 	t.Run("returns registered user on successful response from server", func(t *testing.T) {
 		// Arrange
-		auth := Auth{db: database.NewFake(), apiClient: apiclient.NewFake()}
+		auth := NewAuth(database.NewFake(), apiclient.NewFake(), encryption.NewManagerFake())
 		username := "test@user.com"
 		registered, err := auth.SignUp(username, DummyPassword)
 		require.NoError(t, err)
@@ -258,7 +228,7 @@ func TestAuth_SignIn(t *testing.T) {
 		// Arrange
 		db := database.NewStub()
 		db.OpenErr = errors.New("open error")
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
+		auth := NewAuth(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignIn(DummyEmail, DummyPassword)
@@ -270,7 +240,7 @@ func TestAuth_SignIn(t *testing.T) {
 		// Arrange
 		db := database.NewStub()
 		db.WriteErr = errors.New("write error")
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
+		auth := NewAuth(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignIn(DummyEmail, DummyPassword)
@@ -282,7 +252,7 @@ func TestAuth_SignIn(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
 		ac.PostErrors[api.EndpointSignIn] = errors.New("test error")
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignIn(DummyEmail, DummyPassword)
@@ -296,7 +266,7 @@ func TestAuth_SignIn(t *testing.T) {
 		ac.PostResponses[api.EndpointSignIn] = apiclient.StubResponse{
 			StatusCode: http.StatusInternalServerError,
 		}
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignIn(DummyEmail, DummyPassword)
@@ -311,7 +281,7 @@ func TestAuth_SignIn(t *testing.T) {
 			StatusCode: http.StatusOK,
 			Body:       []byte("invalid response"),
 		}
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 
 		// Act
 		_, err := auth.SignIn(DummyEmail, DummyPassword)
@@ -329,7 +299,7 @@ func TestAuth_SignOut(t *testing.T) {
 	t.Run("closes database connection", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
+		auth := NewAuth(db, apiclient.NewFake(), encryption.NewManagerFake())
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
 		require.NoError(t, err)
 
@@ -338,12 +308,12 @@ func TestAuth_SignOut(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Panics(t, func() { _, _ = db.Read(database.PrivateIdentityKeyPK()) }, "read should panic because database connection was closed")
+		assert.Panics(t, func() { _, _ = db.Read("test") }, "read should panic because database connection was closed")
 	})
 	t.Run("resets authorization header on api client", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewFake()
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
 		require.NoError(t, err)
 
@@ -362,7 +332,7 @@ func TestAuth_SignOut(t *testing.T) {
 		// Arrange
 		db := database.NewStub()
 		db.CloseErr = errors.New("close error")
-		auth := Auth{db: db, apiClient: apiclient.NewFake()}
+		auth := NewAuth(db, apiclient.NewFake(), encryption.NewManagerFake())
 		_, err := auth.SignUp(DummyEmail, DummyPassword)
 		require.NoError(t, err)
 

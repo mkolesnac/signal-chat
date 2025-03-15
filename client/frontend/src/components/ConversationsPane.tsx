@@ -48,7 +48,7 @@ export default function ConversationsPane() {
 
   const mutation = useMutation({
     mutationFn: async (variables: { name: string; participantIds: string[] }) =>
-      CreateConversation(variables.name, variables.participantIds),
+      CreateConversation(variables.name, variables.participantIds, 0),
     onSuccess: (newConversation) => {
       queryClient.setQueryData(
         ['conversations'],

@@ -3,18 +3,19 @@ package database
 import "strings"
 
 type Fake struct {
-	Items  map[PrimaryKey][]byte
-	Opened bool
+	Items        map[string][]byte
+	Opened       bool
+	ActiveUserID string
 }
 
 func NewFake() *Fake {
 	return &Fake{
-		Items: make(map[PrimaryKey][]byte),
+		Items: make(map[string][]byte),
 	}
 }
 
 func (f *Fake) Open(userID string) error {
-	_ = userID
+	f.ActiveUserID = userID
 	f.Opened = true
 	return nil
 }
@@ -24,18 +25,18 @@ func (f *Fake) Close() error {
 	return nil
 }
 
-func (f *Fake) Read(pk PrimaryKey) ([]byte, error) {
+func (f *Fake) Read(key string) ([]byte, error) {
 	f.panicIfNotOpened()
-	return f.Items[pk], nil
+	return f.Items[key], nil
 }
 
-func (f *Fake) Write(pk PrimaryKey, value []byte) error {
+func (f *Fake) Write(key string, value []byte) error {
 	f.panicIfNotOpened()
-	f.Items[pk] = value
+	f.Items[key] = value
 	return nil
 }
 
-func (f *Fake) Query(prefix PrimaryKey) (map[string][]byte, error) {
+func (f *Fake) Query(prefix string) (map[string][]byte, error) {
 	prefixStr := string(prefix)
 	result := make(map[string][]byte)
 	for k, v := range f.Items {
@@ -46,9 +47,9 @@ func (f *Fake) Query(prefix PrimaryKey) (map[string][]byte, error) {
 	return result, nil
 }
 
-func (f *Fake) Delete(pk PrimaryKey) error {
+func (f *Fake) Delete(key string) error {
 	f.panicIfNotOpened()
-	delete(f.Items, pk)
+	delete(f.Items, key)
 	return nil
 }
 

@@ -102,7 +102,7 @@ func TestDatabase_ReadValueIntegration(t *testing.T) {
 		}
 
 		// Act
-		got, err := db.Read("123")
+		got, err := db.Read("test")
 
 		// Assert
 		assert.NoError(t, err)

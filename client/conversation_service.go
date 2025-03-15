@@ -1,37 +1,50 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"net/http"
 	"signal-chat/client/database"
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
 )
 
+type ConversationCallback func(conv models.Conversation)
+
+type MessageCallback func(msg models.Message)
+
 type ConversationAPI interface {
+	Get(route string) (int, []byte, error)
 	Post(route string, payload any) (int, []byte, error)
 	Subscribe(eventType api.WSMessageType, handler api.WSHandler)
 }
 
+type Encryptor interface {
+	Encrypt(plaintext []byte, recipientID string) ([]byte, error)
+	Decrypt(ciphertext []byte, senderID string) ([]byte, error)
+}
+
 type ConversationService struct {
-	ctx       context.Context
-	db        database.Store
-	apiClient ConversationAPI
+	db                  database.DB
+	api                 ConversationAPI
+	encryptor           Encryptor
+	ConversationAdded   ConversationCallback
+	ConversationUpdated ConversationCallback
+	MessageAdded        MessageCallback
 }
 
-func NewConversationService(db database.Store, apiClient ConversationAPI) *ConversationService {
-	svc := &ConversationService{db: db, apiClient: apiClient}
-	svc.apiClient.Subscribe(api.MessageTypeSync, svc.handleSync)
-	svc.apiClient.Subscribe(api.MessageTypeNewConversation, svc.handleNewConversation)
-	svc.apiClient.Subscribe(api.MessageTypeNewMessage, svc.handleNewMessage)
+func NewConversationService(db database.DB, apiClient ConversationAPI, encryptor Encryptor) *ConversationService {
+	svc := &ConversationService{
+		db:        db,
+		api:       apiClient,
+		encryptor: encryptor,
+	}
+
+	svc.api.Subscribe(api.MessageTypeSync, svc.handleSync)
+	svc.api.Subscribe(api.MessageTypeNewConversation, svc.handleNewConversation)
+	svc.api.Subscribe(api.MessageTypeNewMessage, svc.handleNewMessage)
+
 	return svc
-}
-
-func (c *ConversationService) SetContext(ctx context.Context) {
-	c.ctx = ctx
 }
 
 func (c *ConversationService) handleSync(data json.RawMessage) error {
@@ -42,9 +55,9 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 
 	for _, payload := range s.NewConversations {
 		conv := models.Conversation{
-			ID:             payload.ConversationID,
-			Name:           payload.Name,
-			ParticipantIDs: payload.ParticipantIDs,
+			ID:                  payload.ConversationID,
+			Name:                payload.Name,
+			OtherParticipantIDs: payload.OtherParticipantIDs,
 		}
 		if err := c.writeConversation(conv); err != nil {
 			return err
@@ -57,7 +70,17 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 			return err
 		}
 
-		conv.LastMessagePreview = payload.Preview
+		plaintext, err := c.encryptor.Decrypt(payload.Ciphertext, payload.SenderID)
+		if err != nil {
+			return fmt.Errorf("decryption failed: %w", err)
+		}
+		var content Content
+		err = json.Unmarshal(plaintext, &content)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshall message content: %w", err)
+		}
+
+		conv.LastMessagePreview = content.Preview
 		conv.LastMessageSenderID = payload.SenderID
 		conv.LastMessageTimestamp = payload.Timestamp
 		if err := c.writeConversation(conv); err != nil {
@@ -66,7 +89,7 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 
 		msg := models.Message{
 			ID:        payload.MessageID,
-			Text:      payload.Text,
+			Text:      content.Text,
 			SenderID:  payload.SenderID,
 			Timestamp: payload.Timestamp,
 		}
@@ -85,15 +108,17 @@ func (c *ConversationService) handleNewConversation(data json.RawMessage) error 
 	}
 
 	conv := models.Conversation{
-		ID:             p.ConversationID,
-		Name:           p.Name,
-		ParticipantIDs: p.ParticipantIDs,
+		ID:                  p.ConversationID,
+		Name:                p.Name,
+		OtherParticipantIDs: p.OtherParticipantIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
 		return err
 	}
 
-	runtime.EventsEmit(c.ctx, "conversation_added", conv)
+	if c.ConversationAdded != nil {
+		c.ConversationAdded(conv)
+	}
 
 	return nil
 }
@@ -109,18 +134,30 @@ func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
 		return err
 	}
 
-	conv.LastMessagePreview = p.Preview
+	plaintext, err := c.encryptor.Decrypt(p.Ciphertext, p.SenderID)
+	if err != nil {
+		return fmt.Errorf("decryption failed: %w", err)
+	}
+	var content Content
+	err = json.Unmarshal(plaintext, &content)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshall message content: %w", err)
+	}
+
+	conv.LastMessagePreview = content.Preview
 	conv.LastMessageSenderID = p.SenderID
 	conv.LastMessageTimestamp = p.Timestamp
 	if err := c.writeConversation(conv); err != nil {
 		return err
 	}
 
-	runtime.EventsEmit(c.ctx, "conversation_updated", conv)
+	if c.ConversationUpdated != nil {
+		c.ConversationUpdated(conv)
+	}
 
 	msg := models.Message{
 		ID:        p.MessageID,
-		Text:      p.Text,
+		Text:      content.Text,
 		SenderID:  p.SenderID,
 		Timestamp: p.Timestamp,
 	}
@@ -128,13 +165,15 @@ func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
 		return err
 	}
 
-	runtime.EventsEmit(c.ctx, "message_added", msg)
+	if c.MessageAdded != nil {
+		c.MessageAdded(msg)
+	}
 
 	return nil
 }
 
 func (c *ConversationService) ListConversations() ([]models.Conversation, error) {
-	data, err := c.db.Query(database.ConversationPK(""))
+	data, err := c.db.Query(conversationKey(""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query conversations: %w", err)
 	}
@@ -159,7 +198,7 @@ func (c *ConversationService) ListMessages(conversationID string) ([]models.Mess
 		return nil, err
 	}
 
-	data, err := c.db.Query(database.MessagePK(conversationID, ""))
+	data, err := c.db.Query(messageKey(conversationID, ""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query messages: %w", err)
 	}
@@ -176,17 +215,21 @@ func (c *ConversationService) ListMessages(conversationID string) ([]models.Mess
 	return messages, nil
 }
 
-func (c *ConversationService) CreateConversation(name string, recipientIDs []string) (models.Conversation, error) {
+func (c *ConversationService) CreateConversation(name string, otherParticipantIDs []string, mode models.ConversationMode) (models.Conversation, error) {
 	panicIfEmpty("name", name)
-	if len(recipientIDs) == 0 {
-		panic("recipientIDs must not be empty")
+	if len(otherParticipantIDs) == 0 {
+		panic("otherParticipantIDs must not be empty")
+	}
+	if mode == models.OneOnOne && len(otherParticipantIDs) > 1 {
+		panic("only one-to-one conversations are supported now")
 	}
 
 	req := api.CreateConversationRequest{
-		Name:         name,
-		RecipientIDs: recipientIDs,
+		Name:                name,
+		Mode:                int(mode),
+		OtherParticipantIDs: otherParticipantIDs,
 	}
-	status, body, err := c.apiClient.Post(api.EndpointConversations, req)
+	status, body, err := c.api.Post(api.EndpointConversations, req)
 	if err != nil {
 		return models.Conversation{}, err
 	}
@@ -200,9 +243,10 @@ func (c *ConversationService) CreateConversation(name string, recipientIDs []str
 	}
 
 	conv := models.Conversation{
-		ID:             resp.ConversationID,
-		Name:           name,
-		ParticipantIDs: resp.ParticipantIDs,
+		ID:                  resp.ConversationID,
+		Name:                name,
+		Mode:                mode,
+		OtherParticipantIDs: otherParticipantIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
 		return models.Conversation{}, err
@@ -220,18 +264,32 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 		return models.Message{}, err
 	}
 
+	content := Content{
+		Text:    messageText,
+		Preview: messagePreview(messageText),
+	}
+	bytes, err := json.Marshal(content)
+	if err != nil {
+		return models.Message{}, fmt.Errorf("failed to serialize message content: %w", err)
+	}
+
+	ciphertext, err := c.encryptor.Encrypt(bytes, conv.OtherParticipantIDs[0])
+	if err != nil {
+		return models.Message{}, fmt.Errorf("failed to encrypt message content: %w", err)
+	}
+
 	req := api.CreateMessageRequest{
 		ConversationID: conv.ID,
-		Text:           messageText,
-		Preview:        messagePreview(messageText),
+		Ciphertext:     ciphertext,
 	}
-	status, body, err := c.apiClient.Post(api.EndpointMessages, req)
+	status, body, err := c.api.Post(api.EndpointMessages, req)
 	if err != nil {
 		return models.Message{}, err
 	}
 	if status != http.StatusOK {
 		return models.Message{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
 	}
+
 	var resp api.CreateMessageResponse
 	err = json.Unmarshal(body, &resp)
 	if err != nil {
@@ -241,7 +299,6 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 	msg := models.Message{
 		ID:        resp.MessageID,
 		Text:      messageText,
-		SenderID:  resp.SenderID,
 		Timestamp: resp.Timestamp,
 	}
 
@@ -256,8 +313,8 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 		return models.Message{}, err
 	}
 
-	if c.ctx != nil {
-		runtime.EventsEmit(c.ctx, "conversation_updated", conv)
+	if c.ConversationUpdated != nil {
+		c.ConversationUpdated(conv)
 	}
 
 	return msg, nil
@@ -269,7 +326,7 @@ func messagePreview(text string) string {
 }
 
 func (c *ConversationService) getConversation(conversationID string) (models.Conversation, error) {
-	bytes, err := c.db.Read(database.ConversationPK(conversationID))
+	bytes, err := c.db.Read(conversationKey(conversationID))
 	if err != nil {
 		return models.Conversation{}, fmt.Errorf("failed to read conversation: %w", err)
 	}
@@ -290,7 +347,7 @@ func (c *ConversationService) writeConversation(conv models.Conversation) error 
 	if err != nil {
 		return fmt.Errorf("failed to serialize conversation: %w", err)
 	}
-	err = c.db.Write(database.ConversationPK(conv.ID), bytes)
+	err = c.db.Write(conversationKey(conv.ID), bytes)
 	if err != nil {
 		return fmt.Errorf("failed to write conversation: %w", err)
 	}
@@ -302,9 +359,17 @@ func (c *ConversationService) writeMessage(conversationID string, msg models.Mes
 	if err != nil {
 		return fmt.Errorf("failed to serialize message: %w", err)
 	}
-	err = c.db.Write(database.MessagePK(conversationID, msg.ID), bytes)
+	err = c.db.Write(messageKey(conversationID, msg.ID), bytes)
 	if err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 	return nil
+}
+
+func conversationKey(conversationID string) string {
+	return fmt.Sprintf("conversation#%s", conversationID)
+}
+
+func messageKey(conversationID string, messageID string) string {
+	return fmt.Sprintf("message#%s:%s", conversationID, messageID)
 }

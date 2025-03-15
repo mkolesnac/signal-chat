@@ -23,7 +23,7 @@ func NewUserService(apiClient UserAPI) *UserService {
 func (u *UserService) GetUser(id string) (models.User, error) {
 	panicIfEmpty("id", id)
 
-	status, body, err := u.apiClient.Get(api.EndpointUser + "/" + id)
+	status, body, err := u.apiClient.Get(api.EndpointUser(id))
 	if err != nil {
 		return models.User{}, fmt.Errorf("failed to get user: %w", err)
 	}

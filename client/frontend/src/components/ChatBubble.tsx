@@ -24,7 +24,7 @@ type ChatBubbleProps = {
 export default function ChatBubble(props: ChatBubbleProps) {
   const { message, sx} = props
   const {user: me} = useAuth()
-  const fromMe = me!.ID === message.SenderID
+  const fromMe = !message.SenderID
   const { data: sender, isLoading, error } = useUser(message.SenderID)
 
   if (isLoading) {

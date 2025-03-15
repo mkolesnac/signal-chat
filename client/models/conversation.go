@@ -5,13 +5,21 @@ import (
 	"fmt"
 )
 
+type ConversationMode int
+
+const (
+	OneOnOne ConversationMode = iota
+	Group
+)
+
 type Conversation struct {
 	ID                   string
 	Name                 string
+	Mode                 ConversationMode
 	LastMessagePreview   string
 	LastMessageSenderID  string
 	LastMessageTimestamp int64
-	ParticipantIDs       []string
+	OtherParticipantIDs  []string // IDs of the other conversation participants
 }
 
 func (c *Conversation) Serialize() ([]byte, error) {

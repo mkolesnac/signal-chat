@@ -4,16 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/crossle/libsignal-protocol-go/keys/identity"
-	"github.com/crossle/libsignal-protocol-go/serialize"
-	"github.com/crossle/libsignal-protocol-go/state/record"
-	"github.com/crossle/libsignal-protocol-go/util/keyhelper"
 	"net/http"
 	"regexp"
-	"signal-chat/client/database"
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
-	"strconv"
 )
 
 var ErrAuthInvalidEmail = errors.New("email is not a valid email address")
@@ -28,17 +22,21 @@ type AuthAPI interface {
 type AuthDatabase interface {
 	Open(userID string) error
 	Close() error
-	Write(pk database.PrimaryKey, value []byte) error
+}
+
+type EncryptionInitializer interface {
+	InitializeKeyStore() (api.KeyBundle, error)
 }
 
 type Auth struct {
 	db        AuthDatabase
 	apiClient AuthAPI
+	encryptor EncryptionInitializer
 	signedIn  bool
 }
 
-func NewAuth(db AuthDatabase, apiClient AuthAPI) *Auth {
-	return &Auth{db: db, apiClient: apiClient}
+func NewAuth(db AuthDatabase, apiClient AuthAPI, encryptor EncryptionInitializer) *Auth {
+	return &Auth{db: db, apiClient: apiClient, encryptor: encryptor}
 }
 
 func (a *Auth) SignUp(email, pwd string) (models.User, error) {
@@ -54,39 +52,15 @@ func (a *Auth) SignUp(email, pwd string) (models.User, error) {
 		return models.User{}, fmt.Errorf("failed to open user database: %w", err)
 	}
 
-	ik, err := a.storeIdentityKey()
+	bundle, err := a.encryptor.InitializeKeyStore()
 	if err != nil {
 		return models.User{}, err
 	}
 
-	serializer := serialize.NewJSONSerializer()
-	spk, err := a.storeSignedPreKey(ik, serializer)
-	if err != nil {
-		return models.User{}, err
-	}
-
-	preKeys, err := a.storePreKeys(serializer)
-	if err != nil {
-		return models.User{}, err
-	}
-
-	spkSignature := spk.Signature()
 	payload := api.SignUpRequest{
-		UserName:          email,
-		Password:          pwd,
-		IdentityPublicKey: ik.PublicKey().Serialize(),
-		SignedPreKey: api.SignedPreKey{
-			ID:        spk.ID(),
-			PublicKey: spk.KeyPair().PublicKey().Serialize(),
-			Signature: spkSignature[:],
-		},
-		PreKeys: nil,
-	}
-	for _, preKey := range preKeys {
-		payload.PreKeys = append(payload.PreKeys, api.PreKey{
-			ID:        preKey.ID().Value,
-			PublicKey: preKey.KeyPair().PublicKey().Serialize(),
-		})
+		UserName:  email,
+		Password:  pwd,
+		KeyBundle: bundle,
 	}
 
 	status, body, err := a.apiClient.Post(api.EndpointSignUp, payload)
@@ -173,52 +147,6 @@ func (a *Auth) SignOut() error {
 	}
 
 	return nil
-}
-
-func (a *Auth) storeIdentityKey() (*identity.KeyPair, error) {
-	identityKey, err := keyhelper.GenerateIdentityKeyPair()
-	if err != nil {
-		return nil, fmt.Errorf("error generating identity key pair: %w", err)
-	}
-	err = a.db.Write(database.PublicIdentityKeyPK(), identityKey.PublicKey().Serialize())
-	if err != nil {
-		return nil, fmt.Errorf("error writing public identity key: %w", err)
-	}
-	ipk := identityKey.PrivateKey().Serialize()
-	err = a.db.Write(database.PrivateIdentityKeyPK(), ipk[:])
-	if err != nil {
-		return nil, fmt.Errorf("error writing private identity key: %w", err)
-	}
-
-	return identityKey, nil
-}
-
-func (a *Auth) storeSignedPreKey(identityKey *identity.KeyPair, serializer *serialize.Serializer) (*record.SignedPreKey, error) {
-	signedPreKey, err := keyhelper.GenerateSignedPreKey(identityKey, 0, serializer.SignedPreKeyRecord)
-	if err != nil {
-		return nil, fmt.Errorf("error generating signed pre keys: %w", err)
-	}
-	err = a.db.Write(database.SignedPreKeyPK(strconv.Itoa(int(signedPreKey.ID()))), signedPreKey.Serialize())
-	if err != nil {
-		return nil, fmt.Errorf("error writing signed pre key: %w", err)
-	}
-
-	return signedPreKey, nil
-}
-
-func (a *Auth) storePreKeys(serializer *serialize.Serializer) ([]*record.PreKey, error) {
-	preKeys, err := keyhelper.GeneratePreKeys(1, 100, serializer.PreKeyRecord)
-	if err != nil {
-		return nil, fmt.Errorf("error generating pre keys: %w", err)
-	}
-	for _, preKey := range preKeys {
-		err = a.db.Write(database.PreKeyPK(strconv.Itoa(int(preKey.ID().Value))), preKey.Serialize())
-		if err != nil {
-			return nil, fmt.Errorf("error writing signed pre key: %w", err)
-		}
-	}
-
-	return preKeys, nil
 }
 
 func isValidEmail(email string) bool {

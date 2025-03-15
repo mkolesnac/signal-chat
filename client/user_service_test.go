@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"signal-chat/client/encryption"
 	"signal-chat/internal/api"
 	"testing"
 )
@@ -17,7 +18,7 @@ func TestUserService_GetUser(t *testing.T) {
 	t.Run("fetches user data from server", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewFake()
-		auth := Auth{db: database.NewFake(), apiClient: ac}
+		auth := NewAuth(database.NewFake(), ac, encryption.NewManagerFake())
 		got, err := auth.SignUp("test@gmail.com", "test1234")
 		require.NoError(t, err)
 		svc := UserService{apiClient: ac}
@@ -52,7 +53,7 @@ func TestUserService_GetUser(t *testing.T) {
 	t.Run("returns error when api client fails to send request", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.GetErrors[api.EndpointUser] = errors.New("get error")
+		ac.GetErrors[api.EndpointUser(DummyID)] = errors.New("get error")
 		svc := UserService{apiClient: ac}
 
 		// Act
@@ -64,7 +65,7 @@ func TestUserService_GetUser(t *testing.T) {
 	t.Run("returns error when server returns unsuccessful response", func(t *testing.T) {
 		// Arrange
 		ac := apiclient.NewStub()
-		ac.PostResponses[api.EndpointUser] = apiclient.StubResponse{
+		ac.PostResponses[api.EndpointUser(DummyID)] = apiclient.StubResponse{
 			StatusCode: http.StatusInternalServerError,
 		}
 		svc := UserService{apiClient: ac}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
+	"signal-chat/client/encryption"
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
 	"testing"
@@ -25,13 +26,13 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		svc := NewConversationService(db, ac)
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
 
 		syncData := api.WSSyncData{
 			NewConversations: []api.WSNewConversationPayload{{
-				ConversationID: "123",
-				Name:           "Test conversation",
-				ParticipantIDs: []string{"alice", "bob"},
+				ConversationID:      "123",
+				Name:                "Test conversation",
+				OtherParticipantIDs: []string{"alice", "bob"},
 			}},
 		}
 		wsMessages := []api.WSMessage{{
@@ -50,26 +51,31 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		expected := syncData.NewConversations[0]
 		assert.Equal(t, expected.ConversationID, conversations[0].ID)
 		assert.Equal(t, expected.Name, conversations[0].Name)
-		assert.Equal(t, expected.ParticipantIDs, conversations[0].ParticipantIDs)
+		assert.Equal(t, expected.OtherParticipantIDs, conversations[0].OtherParticipantIDs)
 	})
 	t.Run("Sync websocket message handler creates all pending messages and updates corresponding conversations", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		svc := NewConversationService(db, ac)
+		en := encryption.NewManagerFake()
+		svc := NewConversationService(db, ac, en)
+		content := Content{
+			Text:    "Hello world!",
+			Preview: "Hello...",
+		}
+		ciphertext, _ := en.Encrypt(mustMarshal(content), "bob")
 		syncData := api.WSSyncData{
 			NewConversations: []api.WSNewConversationPayload{{
-				ConversationID: "123",
-				Name:           "Test conversation",
-				ParticipantIDs: []string{"mer", "bob"},
+				ConversationID:      "123",
+				Name:                "Test conversation",
+				OtherParticipantIDs: []string{"alice"},
 			}},
 			NewMessages: []api.WSNewMessagePayload{{
 				ConversationID: "123",
 				MessageID:      "def",
-				SenderID:       "bob",
-				Text:           "Hello world!",
-				Preview:        "Hello...",
+				SenderID:       "alice",
+				Ciphertext:     ciphertext,
 				Timestamp:      time.Now().UnixMilli(),
 			}},
 		}
@@ -87,15 +93,15 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, conversations, 1, "One conversation should have been created")
 		assert.Equal(t, syncData.NewMessages[0].SenderID, conversations[0].LastMessageSenderID, "last message sender ID should have been updated to the sender ID of the last message")
-		assert.Equal(t, syncData.NewMessages[0].Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
+		assert.Equal(t, content.Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
 		assert.Equal(t, syncData.NewMessages[0].Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp should have been updated to the timestamp of the last message")
 		messages, err := svc.ListMessages(syncData.NewMessages[0].ConversationID)
 		require.NoError(t, err)
 		assert.Len(t, messages, 1, "A message should have been created")
 		assert.Equal(t, syncData.NewMessages[0].MessageID, messages[0].ID)
 		assert.Equal(t, syncData.NewMessages[0].SenderID, messages[0].SenderID)
-		assert.Equal(t, syncData.NewMessages[0].Text, messages[0].Text)
 		assert.Equal(t, syncData.NewMessages[0].Timestamp, messages[0].Timestamp)
+		assert.Equal(t, content.Text, messages[0].Text)
 	})
 	t.Run("Sync websocket message handler returns error when database write fails", func(t *testing.T) {
 		// Arrange
@@ -104,13 +110,13 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		db.WriteErr = expectedErr
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		_ = NewConversationService(db, ac)
+		_ = NewConversationService(db, ac, encryption.NewManagerFake())
 
 		syncData := api.WSSyncData{
 			NewConversations: []api.WSNewConversationPayload{{
-				ConversationID: DummyValue,
-				Name:           DummyValue,
-				ParticipantIDs: []string{DummyValue},
+				ConversationID:      DummyValue,
+				Name:                DummyValue,
+				OtherParticipantIDs: []string{DummyValue},
 			}},
 		}
 		wsMessages := []api.WSMessage{{
@@ -130,12 +136,12 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		svc := NewConversationService(db, ac)
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
 
 		payload := api.WSNewConversationPayload{
-			ConversationID: "123",
-			Name:           "Test conversation",
-			ParticipantIDs: []string{"alice", "bob"},
+			ConversationID:      "123",
+			Name:                "Test conversation",
+			OtherParticipantIDs: []string{"alice", "bob"},
 		}
 		wsMessages := []api.WSMessage{{
 			Type: api.MessageTypeNewConversation,
@@ -152,7 +158,34 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		assert.Len(t, conversations, 1, "One conversation should have been created")
 		assert.Equal(t, payload.ConversationID, conversations[0].ID)
 		assert.Equal(t, payload.Name, conversations[0].Name)
-		assert.Equal(t, payload.ParticipantIDs, conversations[0].ParticipantIDs)
+		assert.Equal(t, payload.OtherParticipantIDs, conversations[0].OtherParticipantIDs)
+	})
+	t.Run("NewConversation websocket message handler invokes new conversation callback", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
+		payload := api.WSNewConversationPayload{
+			ConversationID:      "123",
+			Name:                "Test conversation",
+			OtherParticipantIDs: []string{"alice", "bob"},
+		}
+		wsMessages := []api.WSMessage{{
+			Type: api.MessageTypeNewConversation,
+			Data: mustMarshal(payload),
+		}}
+		callback := false
+		svc.ConversationAdded = func(conv models.Conversation) {
+			callback = true
+		}
+
+		// Act
+		err := ac.TriggerWebsocketMessages(wsMessages)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.True(t, callback, "new conversation callback should have been invoked")
 	})
 	t.Run("NewConversation websocket message handler returns error when database write fails", func(t *testing.T) {
 		// Arrange
@@ -161,14 +194,14 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		db.WriteErr = expectedErr
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		_ = NewConversationService(db, ac)
+		_ = NewConversationService(db, ac, encryption.NewManagerFake())
 
 		wsMessages := []api.WSMessage{{
 			Type: api.MessageTypeNewConversation,
 			Data: mustMarshal(api.WSNewConversationPayload{
-				ConversationID: DummyValue,
-				Name:           DummyValue,
-				ParticipantIDs: []string{DummyValue},
+				ConversationID:      DummyValue,
+				Name:                DummyValue,
+				OtherParticipantIDs: []string{DummyValue},
 			}),
 		}}
 
@@ -184,23 +217,27 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		svc := NewConversationService(db, ac)
-
+		en := encryption.NewManagerFake()
+		svc := NewConversationService(db, ac, en)
+		content := Content{
+			Text:    "Hello world!",
+			Preview: "Hello...",
+		}
+		ciphertext, _ := en.Encrypt(mustMarshal(content), "bob")
 		newMessagePayload := api.WSNewMessagePayload{
 			ConversationID: "123",
 			MessageID:      "def",
-			SenderID:       "bob",
-			Text:           "Hello world!",
-			Preview:        "Hello...",
+			SenderID:       "alice",
+			Ciphertext:     ciphertext,
 			Timestamp:      time.Now().UnixMilli(),
 		}
 		wsMessages := []api.WSMessage{
 			{
 				Type: api.MessageTypeNewConversation,
 				Data: mustMarshal(api.WSNewConversationPayload{
-					ConversationID: "123",
-					Name:           DummyValue,
-					ParticipantIDs: []string{"alice", "bob"},
+					ConversationID:      "123",
+					Name:                DummyValue,
+					OtherParticipantIDs: []string{"bob"},
 				}),
 			},
 			{
@@ -217,29 +254,77 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, conversations, 1, "One conversation should have been created")
 		assert.Equal(t, newMessagePayload.SenderID, conversations[0].LastMessageSenderID, "last message sender ID should have been updated to the sender ID of the last message")
-		assert.Equal(t, newMessagePayload.Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
+		assert.Equal(t, content.Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
 		assert.Equal(t, newMessagePayload.Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp should have been updated to the timestamp of the last message")
 		messages, err := svc.ListMessages(newMessagePayload.ConversationID)
 		require.NoError(t, err)
 		assert.Len(t, messages, 1, "A message should have been created")
 		assert.Equal(t, newMessagePayload.MessageID, messages[0].ID)
 		assert.Equal(t, newMessagePayload.SenderID, messages[0].SenderID)
-		assert.Equal(t, newMessagePayload.Text, messages[0].Text)
 		assert.Equal(t, newMessagePayload.Timestamp, messages[0].Timestamp)
+		assert.Equal(t, content.Text, messages[0].Text)
+	})
+	t.Run("NewMessage websocket message handler creates invokes new message and updated conversation callbacks", func(t *testing.T) {
+		// Arrange
+		db := database.NewFake()
+		_ = db.Open(DummyValue)
+		ac := apiclient.NewStub()
+		en := encryption.NewManagerFake()
+		svc := NewConversationService(db, ac, en)
+		content := Content{
+			Text:    "Hello world!",
+			Preview: "Hello...",
+		}
+		ciphertext, _ := en.Encrypt(mustMarshal(content), "bob")
+		newMessagePayload := api.WSNewMessagePayload{
+			ConversationID: "123",
+			MessageID:      "def",
+			SenderID:       "alice",
+			Ciphertext:     ciphertext,
+			Timestamp:      time.Now().UnixMilli(),
+		}
+		wsMessages := []api.WSMessage{
+			{
+				Type: api.MessageTypeNewConversation,
+				Data: mustMarshal(api.WSNewConversationPayload{
+					ConversationID:      "123",
+					Name:                DummyValue,
+					OtherParticipantIDs: []string{"bob"},
+				}),
+			},
+			{
+				Type: api.MessageTypeNewMessage,
+				Data: mustMarshal(newMessagePayload),
+			}}
+
+		msgCallback := false
+		svc.MessageAdded = func(msg models.Message) {
+			msgCallback = true
+		}
+		convCallback := false
+		svc.ConversationUpdated = func(conv models.Conversation) {
+			convCallback = true
+		}
+
+		// Act
+		err := ac.TriggerWebsocketMessages(wsMessages)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.True(t, msgCallback, "new message callback should have been invoked")
+		assert.True(t, convCallback, "updated conversation callback should have been invoked")
 	})
 	t.Run("NewMessage websocket message handler returns error when conversation doesn't exist", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		_ = NewConversationService(db, ac)
-
+		_ = NewConversationService(db, ac, encryption.NewManagerFake())
 		payload := api.WSNewMessagePayload{
 			ConversationID: "123",
 			MessageID:      DummyValue,
 			SenderID:       DummyValue,
-			Text:           DummyValue,
-			Preview:        DummyValue,
+			Ciphertext:     []byte(DummyValue),
 			Timestamp:      time.Now().UnixMilli(),
 		}
 		wsMessages := []api.WSMessage{
@@ -260,14 +345,14 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		db.ReadErr = errors.New("read error")
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		_ = NewConversationService(db, ac)
+		_ = NewConversationService(db, ac, encryption.NewManagerFake())
 		wsMessages := []api.WSMessage{
 			{
 				Type: api.MessageTypeNewConversation,
 				Data: mustMarshal(api.WSNewConversationPayload{
-					ConversationID: "123",
-					Name:           DummyValue,
-					ParticipantIDs: []string{DummyValue},
+					ConversationID:      "123",
+					Name:                DummyValue,
+					OtherParticipantIDs: []string{DummyValue},
 				}),
 			},
 			{
@@ -276,8 +361,7 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 					ConversationID: "123",
 					MessageID:      DummyValue,
 					SenderID:       DummyValue,
-					Text:           DummyValue,
-					Preview:        DummyValue,
+					Ciphertext:     []byte(DummyValue),
 					Timestamp:      time.Now().UnixMilli(),
 				}),
 			}}
@@ -296,12 +380,12 @@ func TestConversationService_ListConversations(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
-		conv1, err := svc.CreateConversation("Conversation1", []string{"bob"})
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth(), encryption.NewManagerFake())
+		conv1, err := svc.CreateConversation("Conversation1", []string{"bob"}, models.OneOnOne)
 		require.NoError(t, err)
-		conv2, err := svc.CreateConversation("Conversation2", []string{"tom"})
+		conv2, err := svc.CreateConversation("Conversation2", []string{"tom"}, models.OneOnOne)
 		require.NoError(t, err)
-		conv3, err := svc.CreateConversation("Conversation3", []string{"alice"})
+		conv3, err := svc.CreateConversation("Conversation3", []string{"alice"}, models.OneOnOne)
 		require.NoError(t, err)
 
 		// Act
@@ -318,7 +402,7 @@ func TestConversationService_ListConversations(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		service := NewConversationService(db, apiclient.NewFake())
+		service := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		got, err := service.ListConversations()
@@ -329,10 +413,9 @@ func TestConversationService_ListConversations(t *testing.T) {
 	})
 	t.Run("returns error when unparsable conversation in database", func(t *testing.T) {
 		// Arrange
-		db := database.NewFake()
-		_ = db.Open(DummyValue)
-		_ = db.Write(database.ConversationPK("abc"), []byte("invalid"))
-		service := NewConversationService(db, apiclient.NewFake())
+		db := database.NewStub()
+		db.QueryResult = map[string][]byte{"conversation#123": []byte("invalid")}
+		service := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		got, err := service.ListConversations()
@@ -344,7 +427,7 @@ func TestConversationService_ListConversations(t *testing.T) {
 	t.Run("returns error when database query fails", func(t *testing.T) {
 		// Arrange
 		db := &database.Stub{QueryErr: errors.New("query err")}
-		service := NewConversationService(db, apiclient.NewFake())
+		service := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		got, err := service.ListConversations()
@@ -361,24 +444,22 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
-		resp := api.CreateConversationResponse{
-			ConversationID: "123",
-			ParticipantIDs: []string{"me", "alice"},
-		}
+		resp := api.CreateConversationResponse{ConversationID: "123"}
 		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
 			StatusCode: http.StatusOK,
 			Body:       mustMarshal(resp),
 		}
-		svc := NewConversationService(db, ac)
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
 
 		// Act
-		conv, err := svc.CreateConversation("Test conversation", []string{"alice"})
+		conv, err := svc.CreateConversation("Test conversation", []string{"alice"}, models.OneOnOne)
 
 		// Assert
 		assert.NoError(t, err)
 		assert.Equal(t, resp.ConversationID, conv.ID, "server's conversation ID must be preserved")
 		assert.Equal(t, "Test conversation", conv.Name, "conversation name must be set")
-		assert.Equal(t, resp.ParticipantIDs, conv.ParticipantIDs, "server's participant IDs must be preserved")
+		assert.Len(t, conv.OtherParticipantIDs, 1, "conversation should have only one participant, conversation creator should not be included")
+		assert.Contains(t, conv.OtherParticipantIDs, "alice")
 		conversations, err := svc.ListConversations()
 		require.NoError(t, err)
 		assert.Contains(t, conversations, conv, "conversation should be retrievable after creation")
@@ -389,10 +470,10 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		_ = db.Open(DummyValue)
 		ac := apiclient.NewStub()
 		ac.PostErrors[api.EndpointConversations] = errors.New("test error")
-		svc := NewConversationService(db, ac)
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
 
 		// Act
-		_, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		_, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 
 		// Assert
 		assert.Error(t, err)
@@ -406,10 +487,10 @@ func TestConversationService_CreateConversation(t *testing.T) {
 			StatusCode: http.StatusInternalServerError,
 			Body:       mustMarshal(api.CreateConversationResponse{Error: "test error"}),
 		}
-		svc := NewConversationService(db, ac)
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
 
 		// Act
-		_, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		_, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 
 		// Assert
 		assert.Error(t, err)
@@ -418,25 +499,25 @@ func TestConversationService_CreateConversation(t *testing.T) {
 		db := database.NewFake()
 		err := db.Open(DummyValue)
 		require.NoError(t, err)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
-		assert.Panics(t, func() { _, _ = svc.CreateConversation("", []string{DummyValue}) })
+		assert.Panics(t, func() { _, _ = svc.CreateConversation("", []string{DummyValue}, models.OneOnOne) })
 	})
 	t.Run("panics when empty recipientID", func(t *testing.T) {
 		db := database.NewFake()
 		err := db.Open(DummyValue)
 		require.NoError(t, err)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
-		assert.Panics(t, func() { _, _ = svc.CreateConversation(DummyValue, []string{}) })
+		assert.Panics(t, func() { _, _ = svc.CreateConversation(DummyValue, []string{}, models.OneOnOne) })
 	})
 	t.Run("returns error when database write fails", func(t *testing.T) {
 		// Arrange
 		db := &database.Stub{WriteErr: errors.New("write err")}
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
-		_, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		_, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 
 		// Assert
 		assert.Error(t, err)
@@ -451,7 +532,6 @@ func TestConversationService_SendMessage(t *testing.T) {
 		ac := apiclient.NewStub()
 		resp := api.CreateMessageResponse{
 			MessageID: "123",
-			SenderID:  "465",
 			Timestamp: time.Now().UnixMilli(),
 		}
 		ac.PostResponses[api.EndpointMessages] = apiclient.StubResponse{
@@ -460,13 +540,10 @@ func TestConversationService_SendMessage(t *testing.T) {
 		}
 		ac.PostResponses[api.EndpointConversations] = apiclient.StubResponse{
 			StatusCode: http.StatusOK,
-			Body: mustMarshal(api.CreateConversationResponse{
-				ConversationID: DummyValue,
-				ParticipantIDs: []string{DummyValue},
-			}),
+			Body:       mustMarshal(api.CreateConversationResponse{ConversationID: DummyValue}),
 		}
-		svc := NewConversationService(db, ac)
-		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
+		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 		require.NoError(t, err)
 
 		// Act
@@ -475,38 +552,42 @@ func TestConversationService_SendMessage(t *testing.T) {
 		// Assert
 		assert.NoError(t, err)
 		assert.Equal(t, resp.MessageID, msg.ID, "message ID returned from server should have been used")
-		assert.Equal(t, resp.SenderID, msg.SenderID, "sender ID returned from server should have been used")
+		assert.Equal(t, "", msg.SenderID, "sender ID should be empty since it was us who sent the message")
 		assert.Equal(t, resp.Timestamp, msg.Timestamp, "timestamp returned from server should have been used")
 		assert.Equal(t, "Second message", msg.Text)
 		messages, err := svc.ListMessages(conv.ID)
 		require.NoError(t, err)
 		assert.Contains(t, messages, msg, "message should be retrievable after creation")
 	})
-	t.Run("updates conversation's last message preview", func(t *testing.T) {
+	t.Run("updates conversation and invokes updated conversation callback", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
-		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth(), encryption.NewManagerFake())
+		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 		require.NoError(t, err)
+		var updatedConv models.Conversation
+		called := false
+		svc.ConversationUpdated = func(conv models.Conversation) {
+			called = true
+			updatedConv = conv
+		}
 
 		// Act
 		msg, err := svc.SendMessage(conv.ID, "Second message")
 
 		// Assert
 		assert.NoError(t, err)
-		conversations, err := svc.ListConversations()
-		require.NoError(t, err)
-		require.Len(t, conversations, 1)
-		assert.Contains(t, msg.Text, conversations[0].LastMessagePreview, "last message preview in conversation should have been updated")
-		assert.Equal(t, msg.Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp in conversation should have been updated")
-		assert.Equal(t, msg.SenderID, conversations[0].LastMessageSenderID, "last message sender ID in conversation should have been updated")
+		assert.True(t, called, "updated conversation callback should have been invoked")
+		assert.Contains(t, msg.Text, updatedConv.LastMessagePreview, "last message preview in conversation should have been updated")
+		assert.Equal(t, msg.Timestamp, updatedConv.LastMessageTimestamp, "last message timestamp in conversation should have been updated")
+		assert.Equal(t, msg.SenderID, updatedConv.LastMessageSenderID, "last message sender ID in conversation should have been updated")
 	})
 	t.Run("returns error when given conversation doesn't exist", func(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		_, err := svc.SendMessage("123", DummyValue)
@@ -524,8 +605,8 @@ func TestConversationService_SendMessage(t *testing.T) {
 			Body:       mustMarshal(api.CreateConversationResponse{ConversationID: "123"}),
 		}
 		ac.PostErrors[api.EndpointMessages] = errors.New("test error") // fail on create message request
-		svc := NewConversationService(db, ac)
-		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
+		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 		require.NoError(t, err)
 
 		// Act
@@ -547,8 +628,8 @@ func TestConversationService_SendMessage(t *testing.T) {
 			StatusCode: http.StatusInternalServerError,
 			Body:       mustMarshal(api.CreateConversationResponse{Error: "test error"}),
 		}
-		svc := NewConversationService(db, ac)
-		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		svc := NewConversationService(db, ac, encryption.NewManagerFake())
+		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 		require.NoError(t, err)
 
 		// Act
@@ -565,7 +646,7 @@ func TestConversationService_SendMessage(t *testing.T) {
 		bytes, _ := (&models.Conversation{ID: id}).Serialize()
 		db.QueryResult = map[string][]byte{key: bytes}
 		db.WriteErr = errors.New("write error")
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		_, err := svc.SendMessage(id, "New message")
@@ -577,7 +658,7 @@ func TestConversationService_SendMessage(t *testing.T) {
 		db := database.NewFake()
 		err := db.Open(DummyValue)
 		require.NoError(t, err)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		assert.Panics(t, func() { _, _ = svc.SendMessage("", "Test message") })
 	})
@@ -585,7 +666,7 @@ func TestConversationService_SendMessage(t *testing.T) {
 		db := database.NewFake()
 		err := db.Open(DummyValue)
 		require.NoError(t, err)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		assert.Panics(t, func() { _, _ = svc.SendMessage("123", "") })
 	})
@@ -596,8 +677,8 @@ func TestConversationService_ListMessages(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth())
-		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue})
+		svc := NewConversationService(db, apiclient.NewFakeWithoutAuth(), encryption.NewManagerFake())
+		conv, err := svc.CreateConversation(DummyValue, []string{DummyValue}, models.OneOnOne)
 		require.NoError(t, err)
 		msg, err := svc.SendMessage(conv.ID, DummyValue)
 		require.NoError(t, err)
@@ -614,7 +695,7 @@ func TestConversationService_ListMessages(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act & Assert
 		assert.Panics(t, func() {
@@ -625,7 +706,7 @@ func TestConversationService_ListMessages(t *testing.T) {
 		// Arrange
 		db := database.NewFake()
 		_ = db.Open(DummyValue)
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 
 		// Act
 		messages, err := svc.ListMessages("123")
@@ -643,7 +724,7 @@ func TestConversationService_ListMessages(t *testing.T) {
 			ReadResult: bytes,
 			QueryErr:   errors.New("query err"),
 		}
-		svc := NewConversationService(db, apiclient.NewFake())
+		svc := NewConversationService(db, apiclient.NewFake(), encryption.NewManagerFake())
 		require.NoError(t, err)
 
 		// Act

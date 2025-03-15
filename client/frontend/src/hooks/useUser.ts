@@ -9,13 +9,13 @@ export function useUser(userId: string | undefined) {
     queryKey: ['users', userId],
     queryFn: async () => {
       console.log("fetching user with ID: %o", userId)
-      if (userId === me?.ID) {
+      if (!userId || userId === me?.ID) {
         console.log("returning me")
         return me
       }
       return await GetUser(userId!)
     },
-    enabled: !!userId,
+    //enabled: !!userId,
     staleTime: 5 * 60 * 1000,  // Consider data fresh for 5 minutes
   })
 }

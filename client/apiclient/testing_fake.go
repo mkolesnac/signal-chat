@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"math/rand"
 	"net/http"
-	"signal-chat/client/models"
+	"signal-chat/client/utils"
 	"signal-chat/internal/api"
 	"strings"
 	"sync"
@@ -14,9 +15,16 @@ import (
 )
 
 type User struct {
-	id       string
-	username string
-	password string
+	id        string
+	username  string
+	password  string
+	keyBundle *api.KeyBundle
+}
+
+type Conversation struct {
+	ID             string
+	Name           string
+	ParticipantIDs []string
 }
 
 type RequestRecord struct {
@@ -27,33 +35,36 @@ type RequestRecord struct {
 }
 
 type Fake struct {
-	users         map[string]User
-	mu            sync.RWMutex
-	requests      []RequestRecord
-	username      string
-	password      string
-	conversations map[string]models.Conversation      // all conversations
-	userSyncData  map[string]api.WSSyncData           // for all users
-	handlers      map[api.WSMessageType]api.WSHandler // only for current user
-	onWSError     api.WSErrorHandler
-	RequireAuth   bool
+	users           map[string]User
+	mu              sync.RWMutex
+	requests        []RequestRecord
+	username        string
+	password        string
+	conversations   map[string]Conversation             // all conversations
+	userSyncData    map[string]api.WSSyncData           // for all users
+	handlers        map[api.WSMessageType]api.WSHandler // only for current user
+	registrationIDs map[string]uint32                   // for all users
+	onWSError       api.WSErrorHandler
+	RequireAuth     bool
 }
 
 func NewFake() *Fake {
 	return &Fake{
-		users:         make(map[string]User),
-		handlers:      make(map[api.WSMessageType]api.WSHandler),
-		conversations: make(map[string]models.Conversation),
-		userSyncData:  map[string]api.WSSyncData{},
+		users:           make(map[string]User),
+		handlers:        make(map[api.WSMessageType]api.WSHandler),
+		conversations:   make(map[string]Conversation),
+		userSyncData:    make(map[string]api.WSSyncData),
+		registrationIDs: make(map[string]uint32),
 	}
 }
 
 func NewFakeWithoutAuth() *Fake {
 	f := Fake{
-		users:         make(map[string]User),
-		handlers:      make(map[api.WSMessageType]api.WSHandler),
-		conversations: make(map[string]models.Conversation),
-		userSyncData:  map[string]api.WSSyncData{},
+		users:           make(map[string]User),
+		handlers:        make(map[api.WSMessageType]api.WSHandler),
+		conversations:   make(map[string]Conversation),
+		userSyncData:    make(map[string]api.WSSyncData),
+		registrationIDs: make(map[string]uint32),
 	}
 
 	id := uuid.New().String()
@@ -70,12 +81,12 @@ func NewFakeWithoutAuth() *Fake {
 func (f *Fake) StartSession(username, password string) error {
 	f.username = username
 	f.password = password
-	_, err := f.authenticate(f.username, f.password)
+	usr, err := f.authenticate(f.username, f.password)
 	if err != nil {
 		return err
 	}
 
-	syncData, dataExists := f.userSyncData[username]
+	syncData, dataExists := f.userSyncData[usr.id]
 	handler, handleExists := f.handlers[api.MessageTypeSync]
 	if dataExists && handleExists {
 		jsonData, err := json.Marshal(syncData)
@@ -104,7 +115,14 @@ func (f *Fake) Close() error {
 }
 
 func (f *Fake) Subscribe(eventType api.WSMessageType, handler api.WSHandler) {
+	if _, ok := f.handlers[eventType]; ok {
+		panic(fmt.Sprintf("Handler for event %v already subscribed", eventType))
+	}
 	f.handlers[eventType] = handler
+}
+
+func (f *Fake) ClearHandlers() {
+	f.handlers = make(map[api.WSMessageType]api.WSHandler)
 }
 
 func (f *Fake) Get(route string) (int, []byte, error) {
@@ -114,18 +132,38 @@ func (f *Fake) Get(route string) (int, []byte, error) {
 	f.recordRequest("GET", route, nil)
 
 	switch {
-	case strings.HasPrefix(route, api.EndpointUser):
-		id := strings.TrimPrefix(strings.TrimPrefix(route, api.EndpointUser), "/")
-		if id == "" {
-			return f.badRequestResponse("invalid user ID")
-		}
-
-		usr, exists := f.users[id]
+	case matchRoutePattern(route, api.EndpointUser(":id")):
+		userID := extractParam(route, api.EndpointUserKeys(":id"), "id")
+		usr, exists := f.users[userID]
 		if !exists {
 			return f.badRequestResponse("user not found")
 		}
 
 		return f.respond(http.StatusOK, api.GetUserResponse{Username: usr.username})
+	case matchRoutePattern(route, api.EndpointUserKeys(":id")):
+		userID := extractParam(route, api.EndpointUserKeys(":id"), "id")
+		usr, exists := f.users[userID]
+		if !exists {
+			return f.badRequestResponse("user not found")
+		}
+
+		preKey, newPreKeys, err := takeRandomItem(usr.keyBundle.PreKeys)
+		if err != nil {
+			return f.internalErrorResponse("failed to select pre key")
+		}
+		usr.keyBundle.PreKeys = newPreKeys
+
+		bundle := api.PreKeyBundle{
+			RegistrationID: usr.keyBundle.RegistrationID,
+			IdentityKey:    usr.keyBundle.IdentityKey,
+			SignedPreKey: api.PreKey{
+				ID:        usr.keyBundle.SignedPreKey.ID,
+				PublicKey: usr.keyBundle.SignedPreKey.PublicKey,
+			},
+			SignedPreKeySignature: usr.keyBundle.SignedPreKey.Signature,
+			PreKey:                preKey,
+		}
+		return f.respond(http.StatusOK, api.GetPrekeyBundleResponse{PreKeyBundle: bundle})
 	//case route == "/user/":
 	default:
 		return http.StatusNotFound, nil, nil
@@ -159,11 +197,15 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 		}
 
 		user := User{
-			id:       uuid.New().String(),
-			username: req.UserName,
-			password: req.Password,
+			//id:        uuid.New().String(),
+			id:        req.UserName,
+			username:  req.UserName,
+			password:  req.Password,
+			keyBundle: &req.KeyBundle,
 		}
 		f.users[user.id] = user
+		f.registrationIDs[user.id] = rand.Uint32()
+
 		return f.respond(http.StatusOK, api.SignUpResponse{UserID: user.id})
 	case api.EndpointSignIn:
 		req, ok := payload.(api.SignInRequest)
@@ -187,25 +229,26 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 		}
 
 		convID := uuid.New().String()
-		participantIDs := append(req.RecipientIDs, sender.id)
-		syncData := f.userSyncData[sender.id]
-		syncData.NewConversations = append(syncData.NewConversations, api.WSNewConversationPayload{
-			ConversationID: convID,
-			Name:           req.Name,
-			ParticipantIDs: participantIDs,
-		})
-		f.userSyncData[sender.id] = syncData
+		for _, id := range req.OtherParticipantIDs {
+			otherParticipants := utils.Filter(req.OtherParticipantIDs, func(s string) bool { return s != id })
+			syncData := f.userSyncData[id]
+			syncData.NewConversations = append(syncData.NewConversations, api.WSNewConversationPayload{
+				ConversationID:      convID,
+				Name:                req.Name,
+				OtherParticipantIDs: otherParticipants,
+			})
+			f.userSyncData[id] = syncData
+		}
 
-		conv := models.Conversation{
+		conv := Conversation{
 			ID:             convID,
 			Name:           req.Name,
-			ParticipantIDs: participantIDs,
+			ParticipantIDs: append(req.OtherParticipantIDs, sender.id),
 		}
 		f.conversations[convID] = conv
 
 		return f.respond(http.StatusOK, api.CreateConversationResponse{
 			ConversationID: convID,
-			ParticipantIDs: participantIDs,
 		})
 	case api.EndpointMessages:
 		req, ok := payload.(api.CreateMessageRequest)
@@ -223,22 +266,20 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 
 		for _, id := range conv.ParticipantIDs {
 			if id != sender.id {
-				syncData := f.userSyncData[sender.id]
+				syncData := f.userSyncData[id]
 				syncData.NewMessages = append(syncData.NewMessages, api.WSNewMessagePayload{
 					ConversationID: conv.ID,
 					MessageID:      msgID,
 					SenderID:       sender.id,
-					Text:           req.Text,
-					Preview:        req.Preview,
+					Ciphertext:     req.Ciphertext,
 					Timestamp:      timestamp,
 				})
-				f.userSyncData[sender.id] = syncData
+				f.userSyncData[id] = syncData
 			}
 		}
 
 		return f.respond(http.StatusOK, api.CreateMessageResponse{
 			MessageID: msgID,
-			SenderID:  sender.id,
 			Timestamp: timestamp,
 		})
 	}
@@ -298,10 +339,63 @@ func (f *Fake) badRequestResponse(msg string) (int, []byte, error) {
 	return http.StatusBadRequest, []byte(fmt.Sprintf(`{"error":"%s"}`, msg)), nil
 }
 
+func (f *Fake) internalErrorResponse(msg string) (int, []byte, error) {
+	return http.StatusInternalServerError, []byte(fmt.Sprintf(`{"error":"%s"}`, msg)), nil
+}
+
 func (f *Fake) handleWSError(err error) {
 	if f.onWSError != nil {
 		f.onWSError(err)
 	} else {
 		panic(fmt.Errorf("unhlandled websocket error: %w", err))
 	}
+}
+
+// Helper functions to match route patterns and extract parameters
+func matchRoutePattern(actualRoute, patternRoute string) bool {
+	// Split both routes into segments
+	actualSegments := strings.Split(strings.Trim(actualRoute, "/"), "/")
+	patternSegments := strings.Split(strings.Trim(patternRoute, "/"), "/")
+
+	// If segment counts don't match, routes don't match
+	if len(actualSegments) != len(patternSegments) {
+		return false
+	}
+
+	// Compare each segment
+	for i, patternSeg := range patternSegments {
+		// If this is a parameter segment (starts with :), it matches anything
+		if strings.HasPrefix(patternSeg, ":") {
+			continue
+		}
+
+		// Otherwise segments must match exactly
+		if patternSeg != actualSegments[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func extractParam(actualRoute, patternRoute, paramName string) string {
+	// Split both routes into segments
+	actualSegments := strings.Split(strings.Trim(actualRoute, "/"), "/")
+	patternSegments := strings.Split(strings.Trim(patternRoute, "/"), "/")
+
+	// Find the index of the parameter
+	paramIndex := -1
+	for i, segment := range patternSegments {
+		if segment == ":"+paramName {
+			paramIndex = i
+			break
+		}
+	}
+
+	// If parameter not found or out of bounds in actual route
+	if paramIndex == -1 || paramIndex >= len(actualSegments) {
+		return ""
+	}
+
+	return actualSegments[paramIndex]
 }

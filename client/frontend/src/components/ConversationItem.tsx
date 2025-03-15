@@ -37,11 +37,11 @@ export default function ConversationItem({
           sx={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}
         >
           <AvatarGroup>
-            {conversation.ParticipantIDs.map((id, i) => (
+            {conversation.OtherParticipantIDs.map((id, i) => (
               <UserAvatar key={`${id}-${i}`} id={id} size={'sm'} />
             ))}
-            {conversation.ParticipantIDs.length > 2 && (
-              <Avatar size={'sm'}>+{conversation.ParticipantIDs.length - 2}</Avatar>
+            {conversation.OtherParticipantIDs.length > 2 && (
+              <Avatar size={'sm'}>+{conversation.OtherParticipantIDs.length - 2}</Avatar>
             )}
           </AvatarGroup>
           <Box flexGrow={1}>

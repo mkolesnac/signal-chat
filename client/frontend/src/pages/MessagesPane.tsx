@@ -29,6 +29,8 @@ export default function MessagesPane() {
     queryKey: ['messages', conversationId],
     queryFn: async ({queryKey}) => {
       const messages = await ListMessages(queryKey[1]!)
+      console.log("fetched messages for conversation '%o': %o", queryKey[1], messages.length)
+
       return sortMessages(messages)
     },
     staleTime: Infinity,

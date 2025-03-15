@@ -1,18 +1,18 @@
 package api
 
 type CreateConversationRequest struct {
-	RecipientIDs []string `json:"recipientIDs" validate:"required,min=1"`
-	Name         string   `json:"name" validate:"required,max=255"`
+	OtherParticipantIDs []string `json:"otherParticipantIDs" validate:"required,min=1"`
+	Name                string   `json:"name" validate:"required,max=255"`
+	Mode                int      `json:"mode" validate:"required"`
 }
 
 type CreateConversationResponse struct {
-	Error          string   `json:"error,omitempty"`
-	ConversationID string   `json:"conversationID,omitempty"`
-	ParticipantIDs []string `json:"participantIDs,omitempty"`
+	Error          string `json:"error,omitempty"`
+	ConversationID string `json:"conversationID,omitempty"`
 }
 
 type WSNewConversationPayload struct {
-	ConversationID string   `json:"conversationID"`
-	Name           string   `json:"name"`
-	ParticipantIDs []string `json:"participantIDs"`
+	ConversationID      string   `json:"conversationID"`
+	Name                string   `json:"name"`
+	OtherParticipantIDs []string `json:"otherParticipantIDs"`
 }

@@ -14,7 +14,7 @@ import (
 )
 
 var ErrInitialized = errors.New("store is already initialized. Create new store using NewStore function")
-var ErrNotInitialized = errors.New("store not initialized. Use Initialize or LoadForUser functions to initialize the store")
+var ErrNotInitialized = errors.New("store not initialized. Use InitializeKeyStore or LoadForUser functions to initialize the store")
 
 const (
 	RegistrationIdDatabaseKey  string = "registrationID"
