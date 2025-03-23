@@ -3,10 +3,10 @@
 import {encryption} from '../models';
 import {api} from '../models';
 
-export function Decrypt(arg1:Array<number>,arg2:string):Promise<Array<number>>;
+export function Decrypt(arg1:Array<number>,arg2:string):Promise<encryption.DecryptedMessage>;
 
-export function Encrypt(arg1:Array<number>,arg2:string):Promise<Array<number>>;
+export function Encrypt(arg1:Array<number>,arg2:string):Promise<encryption.EncryptedMessage>;
 
-export function GetCurrentMaterial(arg1:string):Promise<encryption.Material>;
+export function EncryptionMaterial(arg1:string):Promise<encryption.Material>;
 
 export function InitializeKeyStore():Promise<api.KeyBundle>;

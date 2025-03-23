@@ -27,12 +27,26 @@ func (s *ManagerFake) InitializeKeyStore() (api.KeyBundle, error) {
 	}, nil
 }
 
-func (s *ManagerFake) Encrypt(plaintext []byte, recipientID string) ([]byte, error) {
-	return plaintext, nil
+func (s *ManagerFake) EncryptionMaterial(otherUserID string) *Material {
+	return &Material{
+		MessageKeys: MessageKeys{},
+	}
 }
 
-func (s *ManagerFake) Decrypt(ciphertext []byte, senderID string) ([]byte, error) {
-	return ciphertext, nil
+func (s *ManagerFake) Encrypt(plaintext []byte, recipientID string) (*EncryptedMessage, error) {
+	return &EncryptedMessage{
+		Serialized: plaintext,
+		Ciphertext: plaintext,
+		Envelope:   &Envelope{},
+	}, nil
+}
+
+func (s *ManagerFake) Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage, error) {
+	return &DecryptedMessage{
+		Plaintext:  ciphertext,
+		Ciphertext: ciphertext,
+		Envelope:   &Envelope{},
+	}, nil
 }
 
 func makeArr(n int) []byte {

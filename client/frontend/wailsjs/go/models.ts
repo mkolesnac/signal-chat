@@ -72,6 +72,109 @@ export namespace api {
 
 export namespace encryption {
 	
+	export class Envelope {
+	    MessageType: number;
+	    RatchetKey: number[];
+	    Counter: number;
+	    PreviousCounter: number;
+	    Version: number;
+	    Mac: number[];
+	    SenderRatchetKey: number[];
+	    RegistrationID: number;
+	    SignedPreKeyID: number;
+	    PreKeyID: number;
+	    IdentityKey: number[];
+	    BaseKey: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Envelope(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.MessageType = source["MessageType"];
+	        this.RatchetKey = source["RatchetKey"];
+	        this.Counter = source["Counter"];
+	        this.PreviousCounter = source["PreviousCounter"];
+	        this.Version = source["Version"];
+	        this.Mac = source["Mac"];
+	        this.SenderRatchetKey = source["SenderRatchetKey"];
+	        this.RegistrationID = source["RegistrationID"];
+	        this.SignedPreKeyID = source["SignedPreKeyID"];
+	        this.PreKeyID = source["PreKeyID"];
+	        this.IdentityKey = source["IdentityKey"];
+	        this.BaseKey = source["BaseKey"];
+	    }
+	}
+	export class DecryptedMessage {
+	    Plaintext: number[];
+	    Ciphertext: number[];
+	    Envelope?: Envelope;
+	
+	    static createFrom(source: any = {}) {
+	        return new DecryptedMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Plaintext = source["Plaintext"];
+	        this.Ciphertext = source["Ciphertext"];
+	        this.Envelope = this.convertValues(source["Envelope"], Envelope);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EncryptedMessage {
+	    Serialized: number[];
+	    Ciphertext: number[];
+	    Envelope?: Envelope;
+	
+	    static createFrom(source: any = {}) {
+	        return new EncryptedMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Serialized = source["Serialized"];
+	        this.Ciphertext = source["Ciphertext"];
+	        this.Envelope = this.convertValues(source["Envelope"], Envelope);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class MessageKeys {
 	    CipherKey: number[];
 	    MacKey: number[];
@@ -91,7 +194,6 @@ export namespace encryption {
 	    }
 	}
 	export class Material {
-	    Ciphertext: number[];
 	    RootKey: number[];
 	    SenderChainKey: number[];
 	    ReceiverChainKey: number[];
@@ -106,7 +208,6 @@ export namespace encryption {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Ciphertext = source["Ciphertext"];
 	        this.RootKey = source["RootKey"];
 	        this.SenderChainKey = source["SenderChainKey"];
 	        this.ReceiverChainKey = source["ReceiverChainKey"];
@@ -168,6 +269,8 @@ export namespace models {
 	    Text: string;
 	    SenderID: string;
 	    Timestamp: number;
+	    Ciphertext: number[];
+	    Envelope?: encryption.Envelope;
 	
 	    static createFrom(source: any = {}) {
 	        return new Message(source);
@@ -179,7 +282,27 @@ export namespace models {
 	        this.Text = source["Text"];
 	        this.SenderID = source["SenderID"];
 	        this.Timestamp = source["Timestamp"];
+	        this.Ciphertext = source["Ciphertext"];
+	        this.Envelope = this.convertValues(source["Envelope"], encryption.Envelope);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class User {
 	    ID: string;

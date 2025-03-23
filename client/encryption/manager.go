@@ -19,8 +19,9 @@ import (
 
 type encryptor interface {
 	InitializeKeyStore() (api.KeyBundle, error)
-	Encrypt(plaintext []byte, recipientID string) ([]byte, error)
-	Decrypt(ciphertext []byte, senderID string) ([]byte, error)
+	Encrypt(plaintext []byte, recipientID string) (*EncryptedMessage, error)
+	Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage, error)
+	EncryptionMaterial(otherUserID string) *Material
 }
 
 type Manager struct {
@@ -59,7 +60,7 @@ func (s *Manager) InitializeKeyStore() (api.KeyBundle, error) {
 	}
 	s.store.StoreSignedPreKey(signedPreKeyPair.ID(), signedPreKeyPair)
 
-	preKeyPairs, err := keyhelper.GeneratePreKeys(1, 100, s.serializer.PreKeyRecord)
+	preKeyPairs, err := keyhelper.GeneratePreKeys(1, 10, s.serializer.PreKeyRecord)
 	if err != nil {
 		return api.KeyBundle{}, fmt.Errorf("error generating pre keys: %w", err)
 	}
@@ -88,8 +89,13 @@ func (s *Manager) InitializeKeyStore() (api.KeyBundle, error) {
 	}, nil
 }
 
-func (s *Manager) GetCurrentMaterial(sessionID string) *Material {
-	addr := protocol.NewSignalAddress(sessionID, 1)
+func (s *Manager) EncryptionMaterial(otherUserID string) *Material {
+	addr := protocol.NewSignalAddress(otherUserID, 1)
+
+	if !s.store.ContainsSession(addr) {
+		return nil
+	}
+
 	sessionRecord := s.store.LoadSession(addr)
 	sessionState := sessionRecord.SessionState()
 	chainKey := sessionState.SenderChainKey()
@@ -111,7 +117,7 @@ func (s *Manager) GetCurrentMaterial(sessionID string) *Material {
 	}
 }
 
-func (s *Manager) Encrypt(plaintext []byte, recipientID string) ([]byte, error) {
+func (s *Manager) Encrypt(plaintext []byte, recipientID string) (*EncryptedMessage, error) {
 	addr := protocol.NewSignalAddress(recipientID, 1)
 	var cipher *session.Cipher
 	if !s.store.ContainsSession(addr) {
@@ -136,10 +142,10 @@ func (s *Manager) Encrypt(plaintext []byte, recipientID string) ([]byte, error) 
 		return nil, fmt.Errorf("failed to encrypt the message: %w", err)
 	}
 
-	return ciphertext.Serialize(), nil
+	return newEncryptedMessage(ciphertext), nil
 }
 
-func (s *Manager) Decrypt(ciphertext []byte, senderID string) ([]byte, error) {
+func (s *Manager) Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage, error) {
 	addr := protocol.NewSignalAddress(senderID, 1)
 	if !s.store.ContainsSession(addr) {
 		msg, err := protocol.NewPreKeySignalMessageFromBytes(ciphertext, s.serializer.PreKeySignalMessage, s.serializer.SignalMessage)
@@ -153,7 +159,7 @@ func (s *Manager) Decrypt(ciphertext []byte, senderID string) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt pre key signal message: %w", err)
 		}
-		return plaintext, nil
+		return newDecryptedMessage(plaintext, msg), nil
 	}
 
 	msg, err := protocol.NewSignalMessageFromBytes(ciphertext, s.serializer.SignalMessage)
@@ -166,7 +172,7 @@ func (s *Manager) Decrypt(ciphertext []byte, senderID string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt signal message: %w", err)
 	}
-	return plaintext, nil
+	return newDecryptedMessage(plaintext, msg), nil
 }
 
 func (s *Manager) getPreKeyBundle(recipientID string) (*prekey.Bundle, error) {

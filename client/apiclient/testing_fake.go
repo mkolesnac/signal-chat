@@ -268,11 +268,11 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 			if id != sender.id {
 				syncData := f.userSyncData[id]
 				syncData.NewMessages = append(syncData.NewMessages, api.WSNewMessagePayload{
-					ConversationID: conv.ID,
-					MessageID:      msgID,
-					SenderID:       sender.id,
-					Ciphertext:     req.Ciphertext,
-					Timestamp:      timestamp,
+					ConversationID:   conv.ID,
+					MessageID:        msgID,
+					SenderID:         sender.id,
+					EncryptedMessage: req.EncryptedMessage,
+					Timestamp:        timestamp,
 				})
 				f.userSyncData[id] = syncData
 			}

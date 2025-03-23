@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"signal-chat/client/database"
+	"signal-chat/client/encryption"
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
 )
@@ -20,8 +21,9 @@ type ConversationAPI interface {
 }
 
 type Encryptor interface {
-	Encrypt(plaintext []byte, recipientID string) ([]byte, error)
-	Decrypt(ciphertext []byte, senderID string) ([]byte, error)
+	Encrypt(plaintext []byte, recipientID string) (*encryption.EncryptedMessage, error)
+	Decrypt(ciphertext []byte, senderID string) (*encryption.DecryptedMessage, error)
+	EncryptionMaterial(otherUserID string) *encryption.Material
 }
 
 type ConversationService struct {
@@ -70,17 +72,12 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 			return err
 		}
 
-		plaintext, err := c.encryptor.Decrypt(payload.Ciphertext, payload.SenderID)
+		decrypted, err := c.encryptor.Decrypt(payload.EncryptedMessage, payload.SenderID)
 		if err != nil {
 			return fmt.Errorf("decryption failed: %w", err)
 		}
-		var content Content
-		err = json.Unmarshal(plaintext, &content)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshall message content: %w", err)
-		}
 
-		conv.LastMessagePreview = content.Preview
+		conv.LastMessagePreview = messagePreview(string(decrypted.Plaintext))
 		conv.LastMessageSenderID = payload.SenderID
 		conv.LastMessageTimestamp = payload.Timestamp
 		if err := c.writeConversation(conv); err != nil {
@@ -88,10 +85,12 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 		}
 
 		msg := models.Message{
-			ID:        payload.MessageID,
-			Text:      content.Text,
-			SenderID:  payload.SenderID,
-			Timestamp: payload.Timestamp,
+			ID:         payload.MessageID,
+			Text:       string(decrypted.Plaintext),
+			SenderID:   payload.SenderID,
+			Timestamp:  payload.Timestamp,
+			Ciphertext: decrypted.Ciphertext,
+			Envelope:   decrypted.Envelope,
 		}
 		if err := c.writeMessage(conv.ID, msg); err != nil {
 			return err
@@ -134,17 +133,12 @@ func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
 		return err
 	}
 
-	plaintext, err := c.encryptor.Decrypt(p.Ciphertext, p.SenderID)
+	decrypted, err := c.encryptor.Decrypt(p.EncryptedMessage, p.SenderID)
 	if err != nil {
 		return fmt.Errorf("decryption failed: %w", err)
 	}
-	var content Content
-	err = json.Unmarshal(plaintext, &content)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshall message content: %w", err)
-	}
 
-	conv.LastMessagePreview = content.Preview
+	conv.LastMessagePreview = messagePreview(string(decrypted.Plaintext))
 	conv.LastMessageSenderID = p.SenderID
 	conv.LastMessageTimestamp = p.Timestamp
 	if err := c.writeConversation(conv); err != nil {
@@ -156,10 +150,12 @@ func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
 	}
 
 	msg := models.Message{
-		ID:        p.MessageID,
-		Text:      content.Text,
-		SenderID:  p.SenderID,
-		Timestamp: p.Timestamp,
+		ID:         p.MessageID,
+		Text:       string(decrypted.Plaintext),
+		SenderID:   p.SenderID,
+		Timestamp:  p.Timestamp,
+		Ciphertext: decrypted.Ciphertext,
+		Envelope:   decrypted.Envelope,
 	}
 	if err := c.writeMessage(conv.ID, msg); err != nil {
 		return err
@@ -264,23 +260,16 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 		return models.Message{}, err
 	}
 
-	content := Content{
-		Text:    messageText,
-		Preview: messagePreview(messageText),
-	}
-	bytes, err := json.Marshal(content)
-	if err != nil {
-		return models.Message{}, fmt.Errorf("failed to serialize message content: %w", err)
-	}
+	recipientID := conv.OtherParticipantIDs[0]
 
-	ciphertext, err := c.encryptor.Encrypt(bytes, conv.OtherParticipantIDs[0])
+	encrypted, err := c.encryptor.Encrypt([]byte(messageText), recipientID)
 	if err != nil {
 		return models.Message{}, fmt.Errorf("failed to encrypt message content: %w", err)
 	}
 
 	req := api.CreateMessageRequest{
-		ConversationID: conv.ID,
-		Ciphertext:     ciphertext,
+		ConversationID:   conv.ID,
+		EncryptedMessage: encrypted.Serialized,
 	}
 	status, body, err := c.api.Post(api.EndpointMessages, req)
 	if err != nil {
@@ -297,9 +286,11 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 	}
 
 	msg := models.Message{
-		ID:        resp.MessageID,
-		Text:      messageText,
-		Timestamp: resp.Timestamp,
+		ID:         resp.MessageID,
+		Text:       messageText,
+		Timestamp:  resp.Timestamp,
+		Ciphertext: encrypted.Ciphertext,
+		Envelope:   encrypted.Envelope,
 	}
 
 	if err := c.writeMessage(conv.ID, msg); err != nil {

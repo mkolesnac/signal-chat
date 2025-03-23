@@ -2,8 +2,8 @@ import * as React from 'react'
 import Box from '@mui/joy/Box'
 import Sheet from '@mui/joy/Sheet'
 import Stack from '@mui/joy/Stack'
-import ChatBubble from '../components/ChatBubble'
-import MessageInput from '../components/MessageInput'
+import ChatMessage from './ChatMessage'
+import MessageInput from './MessageInput'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Alert, Skeleton } from '@mui/joy'
@@ -14,6 +14,7 @@ import { EventsOff, EventsOn } from '../../wailsjs/runtime'
 import { models } from '../../wailsjs/go/models'
 import Message = models.Message
 import { useDebounce } from 'use-debounce'
+import MessagesPaneHeader from './MessagesPaneHeader'
 
 function sortMessages(messages: Message[]) {
   return messages.sort((a, b) => a.Timestamp - b.Timestamp)
@@ -76,14 +77,13 @@ export default function MessagesPane() {
   console.log("loading: %o, debouncedIsLoading: %o", isLoading, debouncedIsLoading)
 
   return (
-    <Sheet
+    <Stack
+      direction={'column'}
       sx={{
-        height: '100dvh',
-        display: 'flex',
-        flexDirection: 'column'
+        height: { xs: 'calc(100dvh - var(--Header-height))', md: '100dvh' },
       }}
     >
-      {/*<MessagesPaneHeader sender={chat.sender} />*/}
+      <MessagesPaneHeader/>
       <Box
         sx={{
           display: 'flex',
@@ -112,16 +112,16 @@ export default function MessagesPane() {
             </Alert>
           )}
           {messages?.map(message => (
-            <ChatBubble key={message.ID} message={message}/>
+            <ChatMessage key={message.ID} message={message}/>
           ))}
           {mutation.isLoading && (
-            <ChatBubble message={pendingMessage!} sx={{opacity: 0.5}}/>
+            <ChatMessage message={pendingMessage!} sx={{opacity: 0.5}}/>
           )}
         </Stack>
       </Box>
       <MessageInput
         onSubmit={handleSubmit}
       />
-    </Sheet>
+    </Stack>
   );
 }

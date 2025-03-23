@@ -3,13 +3,16 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"signal-chat/client/encryption"
 )
 
 type Message struct {
-	ID        string
-	Text      string
-	SenderID  string
-	Timestamp int64
+	ID         string
+	Text       string
+	SenderID   string
+	Timestamp  int64
+	Ciphertext []byte
+	Envelope   *encryption.Envelope
 }
 
 func (c *Message) Serialize() ([]byte, error) {

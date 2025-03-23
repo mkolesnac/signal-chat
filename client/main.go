@@ -54,11 +54,12 @@ func main() {
 	}
 	time.Sleep(time.Millisecond)
 
-	_, err = conversations2.SendMessage(conv.ID, "Hello world!")
+	msg, err := conversations2.SendMessage(conv.ID, "Hello world!")
 	if err != nil {
 		panic(err)
 	}
 
+	_ = msg
 	_ = usr2
 
 	// Create conversation service for user1 after the message from user1 was sent because we want

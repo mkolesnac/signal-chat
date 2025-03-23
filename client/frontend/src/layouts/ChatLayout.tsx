@@ -2,22 +2,24 @@ import * as React from 'react'
 import { Outlet } from 'react-router-dom'
 import Box from '@mui/joy/Box'
 import Sheet from '@mui/joy/Sheet'
-import ConversationsPane from '../components/ConversationsPane'
+import Sidebar from '../components/Sidebar'
 
 export default function ChatLayout() {
   return (
-    <Sheet
+    <Box
       sx={{
         width: '100%',
         height: '100dvh',
+        borderTop: '1px solid',
+        borderColor: 'divider',
         display: 'grid',
         gridTemplateColumns: {
           xs: '1fr',
-          sm: 'minmax(min-content, min(30%, 400px)) 1fr',
+          sm: 'minmax(min-content, min(30%, 360px)) 1fr',
         },
       }}
     >
-      <Sheet
+      <Box
         sx={{
           position: { xs: 'fixed', sm: 'sticky' },
           transform: {
@@ -29,13 +31,14 @@ export default function ChatLayout() {
           width: '100%'
         }}
       >
-        <ConversationsPane/>
-      </Sheet>
+        <Sidebar/>
+      </Box>
       <Box component="main" className="MainContent">
         <Outlet/>
+        {/*<ChatContainer/>*/}
         {/*<MessagesPane chat={selectedChat} />*/}
       </Box>
-    </Sheet>
+    </Box>
   );
 
   // return (

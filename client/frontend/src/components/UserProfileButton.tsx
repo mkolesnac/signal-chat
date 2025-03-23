@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { SignOut } from '../../wailsjs/go/main/Auth'
 import { AvatarProps } from '@mui/joy/Avatar'
 import { useNavigate } from 'react-router-dom'
+import Typography from '@mui/joy/Typography'
+import Stack from '@mui/joy/Stack'
 
 type UserProfileButtonProps = AvatarProps & {
 
@@ -23,9 +25,12 @@ export default function UserProfileButton(props: UserProfileButtonProps) {
       <MenuButton
         slots={{ root: IconButton }}
         slotProps={{ root: { size: 'lg' } }}
-        sx={{ borderRadius: 40, p: 0.5 }}
+        sx={{ p: 0.5 }}
       >
-        <UserAvatar id={me?.ID!} size='md'/>
+        <Stack direction='row' spacing={1} alignItems='center'>
+          <UserAvatar id={me?.ID!} size='sm'/>
+          <Typography level="body-md">{me?.Username}</Typography>
+        </Stack>
       </MenuButton>
       <Menu>
         <MenuItem onClick={handleSignOut}>Sign out</MenuItem>

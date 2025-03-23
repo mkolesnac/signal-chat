@@ -1,7 +1,6 @@
 package encryption
 
 type Material struct {
-	Ciphertext             []byte
 	RootKey                []byte
 	SenderChainKey         []byte
 	ReceiverChainKey       []byte

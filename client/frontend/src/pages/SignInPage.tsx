@@ -30,6 +30,14 @@ export default function SignInPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    (async () => {
+      const user = await SignIn("bob@gmail.com", "test1234");
+      setUser(user);
+      navigate('/', { replace: true });
+    })()
+  })
+
   const handleSubmit = async (event: React.FormEvent<SignInFormElement>) => {
     event.preventDefault()
 

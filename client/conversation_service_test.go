@@ -12,6 +12,7 @@ import (
 	"signal-chat/client/encryption"
 	"signal-chat/client/models"
 	"signal-chat/internal/api"
+	"strings"
 	"testing"
 	"time"
 )
@@ -60,11 +61,8 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		ac := apiclient.NewStub()
 		en := encryption.NewManagerFake()
 		svc := NewConversationService(db, ac, en)
-		content := Content{
-			Text:    "Hello world!",
-			Preview: "Hello...",
-		}
-		ciphertext, _ := en.Encrypt(mustMarshal(content), "bob")
+		text := "Hello world!"
+		encrypted, _ := en.Encrypt([]byte(text), "bob")
 		syncData := api.WSSyncData{
 			NewConversations: []api.WSNewConversationPayload{{
 				ConversationID:      "123",
@@ -72,11 +70,11 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 				OtherParticipantIDs: []string{"alice"},
 			}},
 			NewMessages: []api.WSNewMessagePayload{{
-				ConversationID: "123",
-				MessageID:      "def",
-				SenderID:       "alice",
-				Ciphertext:     ciphertext,
-				Timestamp:      time.Now().UnixMilli(),
+				ConversationID:   "123",
+				MessageID:        "def",
+				SenderID:         "alice",
+				EncryptedMessage: encrypted.Serialized,
+				Timestamp:        time.Now().UnixMilli(),
 			}},
 		}
 		wsMessages := []api.WSMessage{{
@@ -93,7 +91,7 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, conversations, 1, "One conversation should have been created")
 		assert.Equal(t, syncData.NewMessages[0].SenderID, conversations[0].LastMessageSenderID, "last message sender ID should have been updated to the sender ID of the last message")
-		assert.Equal(t, content.Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
+		assert.True(t, strings.HasPrefix(text, conversations[0].LastMessagePreview), "last message preview should have been updated to the preview of the last message")
 		assert.Equal(t, syncData.NewMessages[0].Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp should have been updated to the timestamp of the last message")
 		messages, err := svc.ListMessages(syncData.NewMessages[0].ConversationID)
 		require.NoError(t, err)
@@ -101,7 +99,7 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		assert.Equal(t, syncData.NewMessages[0].MessageID, messages[0].ID)
 		assert.Equal(t, syncData.NewMessages[0].SenderID, messages[0].SenderID)
 		assert.Equal(t, syncData.NewMessages[0].Timestamp, messages[0].Timestamp)
-		assert.Equal(t, content.Text, messages[0].Text)
+		assert.Equal(t, text, messages[0].Text)
 	})
 	t.Run("Sync websocket message handler returns error when database write fails", func(t *testing.T) {
 		// Arrange
@@ -219,17 +217,14 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		ac := apiclient.NewStub()
 		en := encryption.NewManagerFake()
 		svc := NewConversationService(db, ac, en)
-		content := Content{
-			Text:    "Hello world!",
-			Preview: "Hello...",
-		}
-		ciphertext, _ := en.Encrypt(mustMarshal(content), "bob")
+		text := "Hello world!"
+		encrypted, _ := en.Encrypt([]byte(text), "bob")
 		newMessagePayload := api.WSNewMessagePayload{
-			ConversationID: "123",
-			MessageID:      "def",
-			SenderID:       "alice",
-			Ciphertext:     ciphertext,
-			Timestamp:      time.Now().UnixMilli(),
+			ConversationID:   "123",
+			MessageID:        "def",
+			SenderID:         "alice",
+			EncryptedMessage: encrypted.Serialized,
+			Timestamp:        time.Now().UnixMilli(),
 		}
 		wsMessages := []api.WSMessage{
 			{
@@ -254,7 +249,7 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, conversations, 1, "One conversation should have been created")
 		assert.Equal(t, newMessagePayload.SenderID, conversations[0].LastMessageSenderID, "last message sender ID should have been updated to the sender ID of the last message")
-		assert.Equal(t, content.Preview, conversations[0].LastMessagePreview, "last message preview should have been updated to the preview of the last message")
+		assert.True(t, strings.HasPrefix(text, conversations[0].LastMessagePreview), "last message preview should have been updated to the preview of the last message")
 		assert.Equal(t, newMessagePayload.Timestamp, conversations[0].LastMessageTimestamp, "last message timestamp should have been updated to the timestamp of the last message")
 		messages, err := svc.ListMessages(newMessagePayload.ConversationID)
 		require.NoError(t, err)
@@ -262,7 +257,7 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		assert.Equal(t, newMessagePayload.MessageID, messages[0].ID)
 		assert.Equal(t, newMessagePayload.SenderID, messages[0].SenderID)
 		assert.Equal(t, newMessagePayload.Timestamp, messages[0].Timestamp)
-		assert.Equal(t, content.Text, messages[0].Text)
+		assert.Equal(t, text, messages[0].Text)
 	})
 	t.Run("NewMessage websocket message handler creates invokes new message and updated conversation callbacks", func(t *testing.T) {
 		// Arrange
@@ -271,17 +266,14 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		ac := apiclient.NewStub()
 		en := encryption.NewManagerFake()
 		svc := NewConversationService(db, ac, en)
-		content := Content{
-			Text:    "Hello world!",
-			Preview: "Hello...",
-		}
-		ciphertext, _ := en.Encrypt(mustMarshal(content), "bob")
+		text := "Hello world!"
+		encrypted, _ := en.Encrypt([]byte(text), "bob")
 		newMessagePayload := api.WSNewMessagePayload{
-			ConversationID: "123",
-			MessageID:      "def",
-			SenderID:       "alice",
-			Ciphertext:     ciphertext,
-			Timestamp:      time.Now().UnixMilli(),
+			ConversationID:   "123",
+			MessageID:        "def",
+			SenderID:         "alice",
+			EncryptedMessage: encrypted.Serialized,
+			Timestamp:        time.Now().UnixMilli(),
 		}
 		wsMessages := []api.WSMessage{
 			{
@@ -321,11 +313,11 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 		ac := apiclient.NewStub()
 		_ = NewConversationService(db, ac, encryption.NewManagerFake())
 		payload := api.WSNewMessagePayload{
-			ConversationID: "123",
-			MessageID:      DummyValue,
-			SenderID:       DummyValue,
-			Ciphertext:     []byte(DummyValue),
-			Timestamp:      time.Now().UnixMilli(),
+			ConversationID:   "123",
+			MessageID:        DummyValue,
+			SenderID:         DummyValue,
+			EncryptedMessage: []byte(DummyValue),
+			Timestamp:        time.Now().UnixMilli(),
 		}
 		wsMessages := []api.WSMessage{
 			{
@@ -358,11 +350,11 @@ func TestConversationService_WebsocketHandlers(t *testing.T) {
 			{
 				Type: api.MessageTypeNewMessage,
 				Data: mustMarshal(api.WSNewMessagePayload{
-					ConversationID: "123",
-					MessageID:      DummyValue,
-					SenderID:       DummyValue,
-					Ciphertext:     []byte(DummyValue),
-					Timestamp:      time.Now().UnixMilli(),
+					ConversationID:   "123",
+					MessageID:        DummyValue,
+					SenderID:         DummyValue,
+					EncryptedMessage: []byte(DummyValue),
+					Timestamp:        time.Now().UnixMilli(),
 				}),
 			}}
 

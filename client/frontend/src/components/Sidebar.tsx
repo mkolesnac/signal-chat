@@ -1,335 +1,167 @@
-import * as React from 'react';
-import GlobalStyles from '@mui/joy/GlobalStyles';
-import Avatar from '@mui/joy/Avatar';
-import Box from '@mui/joy/Box';
-import Button from '@mui/joy/Button';
-import Card from '@mui/joy/Card';
-import Chip from '@mui/joy/Chip';
-import Divider from '@mui/joy/Divider';
-import IconButton from '@mui/joy/IconButton';
-import Input from '@mui/joy/Input';
-import LinearProgress from '@mui/joy/LinearProgress';
-import List from '@mui/joy/List';
-import ListItem from '@mui/joy/ListItem';
-import ListItemButton, { listItemButtonClasses } from '@mui/joy/ListItemButton';
-import ListItemContent from '@mui/joy/ListItemContent';
-import Typography from '@mui/joy/Typography';
-import Sheet from '@mui/joy/Sheet';
-import Stack from '@mui/joy/Stack';
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
-import HomeRoundedIcon from '@mui/icons-material/HomeRounded';
-import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
-import ShoppingCartRoundedIcon from '@mui/icons-material/ShoppingCartRounded';
-import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded';
-import QuestionAnswerRoundedIcon from '@mui/icons-material/QuestionAnswerRounded';
-import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
-import SupportRoundedIcon from '@mui/icons-material/SupportRounded';
-import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded';
+import * as React from 'react'
+import { useEffect, useState } from 'react'
+import Stack from '@mui/joy/Stack'
+import Sheet from '@mui/joy/Sheet'
+import Typography from '@mui/joy/Typography'
+import { Alert, Box, IconButton } from '@mui/joy'
+import List from '@mui/joy/List'
+import ConversationItem from './ConversationItem'
+import { useAuth } from '../contexts/AuthContext'
+import Button from '@mui/joy/Button'
+import NewConversationDialog from './NewConversationDialog'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CreateConversation, ListConversations } from '../../wailsjs/go/main/ConversationService'
+import { EventsOff, EventsOn } from '../../wailsjs/runtime'
+import { models } from '../../wailsjs/go/models'
+import { Add } from '@mui/icons-material'
+import UserProfileButton from './UserProfileButton'
+import Conversation = models.Conversation
+import User = models.User
+import { toggleMessagesPane } from '../utils'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
-import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
-import BrightnessAutoRoundedIcon from '@mui/icons-material/BrightnessAutoRounded';
-import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
-import ColorSchemeToggle from './ColorSchemeToggle';
-import { closeSidebar } from '../utils';
-
-function Toggler(props: {
-  defaultExpanded?: boolean;
-  children: React.ReactNode;
-  renderToggle: (params: {
-    open: boolean;
-    setOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  }) => React.ReactNode;
-}) {
-  const { defaultExpanded = false, renderToggle, children } = props;
-  const [open, setOpen] = React.useState(defaultExpanded);
-
-  console.log("Toggler render")
-  return (
-    <React.Fragment>
-      {renderToggle({ open, setOpen })}
-      <Box
-        sx={[
-          {
-            display: 'grid',
-            transition: '0.2s ease',
-            '& > *': {
-              overflow: 'hidden',
-            },
-          },
-          open ? { gridTemplateRows: '1fr' } : { gridTemplateRows: '0fr' },
-        ]}
-      >
-        {children}
-      </Box>
-    </React.Fragment>
-  );
+function sortConversations(conversations: Conversation[]) {
+  return conversations.sort(
+    (a, b) => a.LastMessageTimestamp - b.LastMessageTimestamp,
+  )
 }
 
 export default function Sidebar() {
-  console.log("Sidebar render")
+  const { user: me } = useAuth()
+  const [newDialogOpen, setNewDialogOpen] = useState(false)
+  const queryClient = useQueryClient()
+
+  const {
+    data: conversations,
+    error,
+  } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: ListConversations,
+    staleTime: Infinity,
+  })
+
+  const mutation = useMutation({
+    mutationFn: async (variables: { name: string; participantIds: string[] }) =>
+      CreateConversation(variables.name, variables.participantIds, 0),
+    onSuccess: (newConversation) => {
+      queryClient.setQueryData(
+        ['conversations'],
+        (old: Conversation[] | undefined) => {
+          if (!old) return [newConversation]
+          return sortConversations([...old, newConversation])
+        },
+      )
+    },
+  })
+
+  useEffect(() => {
+    EventsOn('conversation_added', (value: Conversation) => {
+      queryClient.setQueryData(
+        ['conversations'],
+        (old: Conversation[] | undefined) => {
+          return old ? [...old, value] : [value]
+        },
+      )
+    })
+
+    EventsOn('conversation_updated', (value: Conversation) => {
+      queryClient.setQueryData(
+        ['conversations'],
+        (old: Conversation[] | undefined) => {
+          return old!.map(conv => conv.ID === value.ID ? value : conv)
+        },
+      )
+    })
+
+    return () => {
+      EventsOff('conversation_added')
+    }
+  })
+
+  const handleCreateDialogAccept = (name: string, user: User[]) => {
+    mutation.mutate({ name, participantIds: user.map((u) => u.ID) })
+    setNewDialogOpen(false)
+  }
+
   return (
     <Sheet
-      className="Sidebar"
+      color='neutral'
       sx={{
-        position: { xs: 'fixed', md: 'sticky' },
-        transform: {
-          xs: 'translateX(calc(100% * (var(--SideNavigation-slideIn, 0) - 1)))',
-          md: 'none',
-        },
-        transition: 'transform 0.4s, width 0.4s',
-        zIndex: 10000,
-        height: '100dvh',
-        width: 'var(--Sidebar-width)',
-        top: 0,
-        p: 2,
-        flexShrink: 0,
+        px: 2,
+        py: 3,
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: 3,
         borderRight: '1px solid',
         borderColor: 'divider',
+        height: '100dvh',
+        backgroundColor: 'background.level1',
       }}
     >
-      <GlobalStyles
-        styles={(theme) => ({
-          ':root': {
-            '--Sidebar-width': '220px',
-            [theme.breakpoints.up('lg')]: {
-              '--Sidebar-width': '240px',
-            },
-          },
-        })}
-      />
-      <Box
-        className="Sidebar-overlay"
+      <Stack
+        direction="row"
+        spacing={1}
         sx={{
-          position: 'fixed',
-          zIndex: 9998,
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          opacity: 'var(--SideNavigation-slideIn)',
-          backgroundColor: 'var(--joy-palette-background-backdrop)',
-          transition: 'opacity 0.4s',
-          transform: {
-            xs: 'translateX(calc(100% * (var(--SideNavigation-slideIn, 0) - 1) + var(--SideNavigation-slideIn, 0) * var(--Sidebar-width, 0px)))',
-            lg: 'translateX(-100%)',
-          },
-        }}
-        onClick={() => closeSidebar()}
-      />
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        <IconButton variant="soft" color="primary" size="sm">
-          <BrightnessAutoRoundedIcon />
-        </IconButton>
-        <Typography level="title-lg">Acme Co.</Typography>
-        <ColorSchemeToggle sx={{ ml: 'auto' }} />
-      </Box>
-      <Input size="sm" startDecorator={<SearchRoundedIcon />} placeholder="Search" />
-      <Box
-        sx={{
-          minHeight: 0,
-          overflow: 'hidden auto',
-          flexGrow: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          [`& .${listItemButtonClasses.root}`]: {
-            gap: 1.5,
-          },
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
-        <List
-          size="sm"
-          sx={{
-            gap: 1,
-            '--List-nestedInsetStart': '30px',
-            '--ListItem-radius': (theme) => theme.vars.radius.sm,
-          }}
-        >
-          <ListItem>
-            <ListItemButton>
-              <HomeRoundedIcon />
-              <ListItemContent>
-                <Typography level="title-sm">Home</Typography>
-              </ListItemContent>
-            </ListItemButton>
-          </ListItem>
-          <ListItem>
-            <ListItemButton>
-              <DashboardRoundedIcon />
-              <ListItemContent>
-                <Typography level="title-sm">Dashboard</Typography>
-              </ListItemContent>
-            </ListItemButton>
-          </ListItem>
-          <ListItem>
-            <ListItemButton
-              role="menuitem"
-              component="a"
-              href="/joy-ui/getting-started/templates/order-dashboard/"
-            >
-              <ShoppingCartRoundedIcon />
-              <ListItemContent>
-                <Typography level="title-sm">Orders</Typography>
-              </ListItemContent>
-            </ListItemButton>
-          </ListItem>
-          <ListItem nested>
-            <Toggler
-              renderToggle={({ open, setOpen }) => (
-                <ListItemButton onClick={() => setOpen(!open)}>
-                  <AssignmentRoundedIcon />
-                  <ListItemContent>
-                    <Typography level="title-sm">Tasks</Typography>
-                  </ListItemContent>
-                  <KeyboardArrowDownIcon
-                    sx={[
-                      open
-                        ? {
-                          transform: 'rotate(180deg)',
-                        }
-                        : {
-                          transform: 'none',
-                        },
-                    ]}
-                  />
-                </ListItemButton>
-              )}
-            >
-              <List sx={{ gap: 0.5 }}>
-                <ListItem sx={{ mt: 0.5 }}>
-                  <ListItemButton>All tasks</ListItemButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemButton>Backlog</ListItemButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemButton>In progress</ListItemButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemButton>Done</ListItemButton>
-                </ListItem>
-              </List>
-            </Toggler>
-          </ListItem>
-          <ListItem>
-            <ListItemButton selected>
-              <QuestionAnswerRoundedIcon />
-              <ListItemContent>
-                <Typography level="title-sm">Messages</Typography>
-              </ListItemContent>
-              <Chip size="sm" color="primary" variant="solid">
-                4
-              </Chip>
-            </ListItemButton>
-          </ListItem>
-          <ListItem nested>
-            <Toggler
-              renderToggle={({ open, setOpen }) => (
-                <ListItemButton onClick={() => setOpen(!open)}>
-                  <GroupRoundedIcon />
-                  <ListItemContent>
-                    <Typography level="title-sm">Users</Typography>
-                  </ListItemContent>
-                  <KeyboardArrowDownIcon
-                    sx={[
-                      open
-                        ? {
-                          transform: 'rotate(180deg)',
-                        }
-                        : {
-                          transform: 'none',
-                        },
-                    ]}
-                  />
-                </ListItemButton>
-              )}
-            >
-              <List sx={{ gap: 0.5 }}>
-                <ListItem sx={{ mt: 0.5 }}>
-                  <ListItemButton
-                    role="menuitem"
-                    component="a"
-                    href="/joy-ui/getting-started/templates/profile-dashboard/"
-                  >
-                    My profile
-                  </ListItemButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemButton>Create a new user</ListItemButton>
-                </ListItem>
-                <ListItem>
-                  <ListItemButton>Roles & permission</ListItemButton>
-                </ListItem>
-              </List>
-            </Toggler>
-          </ListItem>
-        </List>
-        <List
-          size="sm"
-          sx={{
-            mt: 'auto',
-            flexGrow: 0,
-            '--ListItem-radius': (theme) => theme.vars.radius.sm,
-            '--List-gap': '8px',
-            mb: 2,
-          }}
-        >
-          <ListItem>
-            <ListItemButton>
-              <SupportRoundedIcon />
-              Support
-            </ListItemButton>
-          </ListItem>
-          <ListItem>
-            <ListItemButton>
-              <SettingsRoundedIcon />
-              Settings
-            </ListItemButton>
-          </ListItem>
-        </List>
-        <Card
-          invertedColors
-          variant="soft"
-          color="warning"
-          size="sm"
-          sx={{ boxShadow: 'none' }}
-        >
-          <Stack
-            direction="row"
-            sx={{ justifyContent: 'space-between', alignItems: 'center' }}
-          >
-            <Typography level="title-sm">Used space</Typography>
-            <IconButton size="sm">
-              <CloseRoundedIcon />
-            </IconButton>
-          </Stack>
-          <Typography level="body-xs">
-            Your team has used 80% of your available space. Need more?
-          </Typography>
-          <LinearProgress variant="outlined" value={80} determinate sx={{ my: 1 }} />
-          <Button size="sm" variant="solid">
-            Upgrade plan
-          </Button>
-        </Card>
-      </Box>
-      <Divider />
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        <Avatar
-          variant="outlined"
-          size="sm"
-          src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=286"
-        />
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography level="title-sm">Siriwat K.</Typography>
-          <Typography level="body-xs">siriwatk@test.com</Typography>
+        <Box flex={"1 1 auto"}>
+          <UserProfileButton/>
         </Box>
-        <IconButton size="sm" variant="plain" color="neutral">
-          <LogoutRoundedIcon />
+        <IconButton
+          variant="plain"
+          aria-label="edit"
+          color="neutral"
+          size="sm"
+          onClick={() => {
+            toggleMessagesPane();
+          }}
+          sx={{ display: { sm: 'none' } }}
+        >
+          <CloseRoundedIcon />
         </IconButton>
+      </Stack>
+      {!!error && (
+        <Alert variant="soft" color="danger" size="lg">
+          {(error as Error).message}
+        </Alert>
+      )}
+      <Box flexGrow={1}>
+        <Typography
+          level="body-xs"
+          sx={{ textTransform: 'uppercase', fontWeight: 'lg', mb: 1}}
+        >
+          Conversations
+        </Typography>
+        {conversations && (
+          <List
+            size='sm'
+            sx={{
+              '--ListItem-paddingY': '0.75rem',
+              '--ListItem-paddingX': '1rem',
+              overflowY: 'auto',
+            }}
+          >
+            {conversations.map((conversation) => (
+              <ConversationItem
+                key={conversation.ID}
+                conversation={conversation}
+              />
+            ))}
+          </List>
+        )}
       </Box>
+      <Box px={2}>
+        <Button fullWidth size='md' color='primary' startDecorator={<Add />} onClick={() => setNewDialogOpen(true)}>
+          New conversation
+        </Button>
+      </Box>
+      <NewConversationDialog
+        open={newDialogOpen}
+        onClose={() => setNewDialogOpen(false)}
+        onAccept={handleCreateDialogAccept}
+      />
     </Sheet>
-  );
+  )
 }

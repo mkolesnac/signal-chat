@@ -10,8 +10,8 @@ export function Encrypt(arg1, arg2) {
   return window['go']['encryption']['Manager']['Encrypt'](arg1, arg2);
 }
 
-export function GetCurrentMaterial(arg1) {
-  return window['go']['encryption']['Manager']['GetCurrentMaterial'](arg1);
+export function EncryptionMaterial(arg1) {
+  return window['go']['encryption']['Manager']['EncryptionMaterial'](arg1);
 }
 
 export function InitializeKeyStore() {

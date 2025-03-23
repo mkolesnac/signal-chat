@@ -1,8 +1,8 @@
 package api
 
 type CreateMessageRequest struct {
-	ConversationID string `json:"conversationID" validate:"required"`
-	Ciphertext     []byte `json:"ciphertext"`
+	ConversationID   string `json:"conversationID" validate:"required"`
+	EncryptedMessage []byte `json:"encryptedMessage" validate:"required"`
 }
 
 type CreateMessageResponse struct {
@@ -12,9 +12,9 @@ type CreateMessageResponse struct {
 }
 
 type WSNewMessagePayload struct {
-	ConversationID string `json:"conversationID"`
-	MessageID      string `json:"messageID"`
-	SenderID       string `json:"senderID"`
-	Ciphertext     []byte `json:"ciphertext"`
-	Timestamp      int64  `json:"timestamp"`
+	ConversationID   string `json:"conversationID"`
+	MessageID        string `json:"messageID"`
+	SenderID         string `json:"senderID"`
+	EncryptedMessage []byte `json:"encryptedMessage"`
+	Timestamp        int64  `json:"timestamp"`
 }
