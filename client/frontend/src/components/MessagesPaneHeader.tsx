@@ -20,6 +20,7 @@ import { AvatarGroup } from '@mui/joy'
 import Box from '@mui/joy/Box'
 import User = models.User
 import { GetUser } from '../../wailsjs/go/main/UserService'
+import { useRecipients } from '../hooks/useRecipients'
 
 type MessagesPaneHeaderProps = {
 };
@@ -38,18 +39,10 @@ export default function MessagesPaneHeader({  }: MessagesPaneHeaderProps) {
     enabled: !!conversationId && !!queryClient.getQueryData(['conversations']), // Only execute if the parent query succeeded
     staleTime: Infinity,
   })
-  const participantQueries = useQueries({
-    queries: (conversation?.OtherParticipantIDs || []).map(id => ({
-      queryKey: ['users', id],
-      queryFn: async () => GetUser(id!),
-      initialData: () => queryClient.getQueryData<User>(['users', id]),
-      staleTime: 5 * 60 * 1000,  // Consider data fresh for 5 minutes
-      enabled: !!conversation,
-    })),
-  });
+  const {recipients} = useRecipients(conversation?.RecipientIDs)
 
   const getParticipantNames = () => {
-    const names = participantQueries.map(query => query.data?.Username).join(', ');
+    const names = recipients.map(r => r?.Username).join(', ');
     return `You and ${names}`
   }
 
@@ -84,12 +77,12 @@ export default function MessagesPaneHeader({  }: MessagesPaneHeaderProps) {
           <ArrowBackIosNewRoundedIcon />
         </IconButton>
         <AvatarGroup>
-          {conversation.OtherParticipantIDs.map((id, i) => (
+          {conversation.RecipientIDs.map((id, i) => (
             <UserAvatar key={`${id}-${i}`} id={id} size={'md'} />
           ))}
-          {conversation.OtherParticipantIDs.length > 2 && (
+          {conversation.RecipientIDs.length > 2 && (
             <Avatar size={'md'}>
-              +{conversation.OtherParticipantIDs.length - 2}
+              +{conversation.RecipientIDs.length - 2}
             </Avatar>
           )}
         </AvatarGroup>
@@ -99,9 +92,8 @@ export default function MessagesPaneHeader({  }: MessagesPaneHeaderProps) {
               noWrap
               sx={{ fontWeight: 'lg', fontSize: 'lg' }}
             >
-              {conversation.Name}
+              {recipients.map(r => r?.Username).join(', ')}
             </Typography>
-          <Typography level="body-sm">{getParticipantNames()}</Typography>
         </Box>
         {/*<div>*/}
         {/*  <Typography*/}

@@ -35,6 +35,8 @@ func getCiphertext(ciphertextMsg protocol.CiphertextMessage) []byte {
 		return whisperMsg.Structure().CipherText
 	} else if preKeyMsg, ok := ciphertextMsg.(*protocol.PreKeySignalMessage); ok {
 		return preKeyMsg.WhisperMessage().Structure().CipherText
+	} else if msg, ok := ciphertextMsg.(*protocol.SenderKeyMessage); ok {
+		return msg.Ciphertext()
 	}
 
 	panic("Only preKey and Whisper messages are supported")

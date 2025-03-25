@@ -1,38 +1,28 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Button,
-  DialogTitle,
   DialogContent,
-  DialogActions,
-  TextField,
+  DialogTitle,
   FormControl,
   FormLabel,
-  Autocomplete,
-  Chip,
-  Stack,
-  Typography,
-  CircularProgress,
-  Input,
+  IconButton,
   Modal,
   ModalDialog,
-  IconButton,
+  Stack,
+  Typography,
 } from '@mui/joy'
-import { SxProps } from '@mui/joy/styles/types'
 import UserAutocomplete from './UserAutocomplete'
 import Close from '@mui/icons-material/Close'
 import List from '@mui/joy/List'
 import { models } from '../../../wailsjs/go/models'
-import User = models.User
 import ListItem from '@mui/joy/ListItem'
 import UserAvatar from '../UserAvatar'
-import Box from '@mui/joy/Box'
-import { SignIn } from '../../../wailsjs/go/main/Auth'
-import Conversation = models.Conversation
+import User = models.User
 
 type NewConversationDialogProps = {
   open: boolean
   onClose: () => void
-  onAccept: (name: string, participants: User[]) => void
+  onAccept: (recipients: User[]) => void
 }
 
 interface FormElements extends HTMLFormControlsCollection {
@@ -62,9 +52,7 @@ const NewConversationDialog = ({
 
   const handleSubmit = async (event: React.FormEvent<NewConversationForm>) => {
     event.preventDefault()
-
-    const name = event.currentTarget.elements.name.value
-    onAccept(name, selectedUsers)
+    onAccept(selectedUsers)
   }
 
   return (
@@ -76,17 +64,6 @@ const NewConversationDialog = ({
         </DialogContent>
         <form onSubmit={handleSubmit}>
           <Stack spacing={2}>
-            <FormControl>
-              <FormLabel>Name</FormLabel>
-              <Input
-                autoFocus
-                required
-                name="name"
-                slotProps={{
-                  input: { autoComplete: 'new-password' },
-                }}
-              />
-            </FormControl>
             <FormControl>
               <FormLabel>Add participants</FormLabel>
               <UserAutocomplete onUserClick={handleUserSelected} />

@@ -48,7 +48,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	conv, err := conversations2.CreateConversation("Test Conversation", []string{usr1.ID}, models.OneOnOne)
+	conv, err := conversations2.CreateConversation([]string{usr1.ID})
 	if err != nil {
 		panic(err)
 	}

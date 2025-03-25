@@ -3,10 +3,12 @@
 import {encryption} from '../models';
 import {api} from '../models';
 
-export function Decrypt(arg1:Array<number>,arg2:string):Promise<encryption.DecryptedMessage>;
+export function CreateEncryptionGroup(arg1:string,arg2:Array<string>):Promise<{[key: string]: Array<number>}>;
 
-export function Encrypt(arg1:Array<number>,arg2:string):Promise<encryption.EncryptedMessage>;
+export function GroupDecrypt(arg1:string,arg2:string,arg3:Array<number>):Promise<encryption.DecryptedMessage>;
 
-export function EncryptionMaterial(arg1:string):Promise<encryption.Material>;
+export function GroupEncrypt(arg1:string,arg2:Array<number>):Promise<encryption.EncryptedMessage>;
 
 export function InitializeKeyStore():Promise<api.KeyBundle>;
+
+export function ProcessSenderKeyDistributionMessage(arg1:string,arg2:string,arg3:Array<number>):Promise<void>;

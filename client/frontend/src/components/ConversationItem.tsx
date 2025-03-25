@@ -13,6 +13,7 @@ import { AvatarGroup, Skeleton } from '@mui/joy'
 import UserAvatar from './UserAvatar'
 import Conversation = models.Conversation
 import Avatar from '@mui/joy/Avatar'
+import { useRecipients } from '../hooks/useRecipients'
 
 type ConversationItemProps = ListItemProps & {
   conversation: Conversation
@@ -25,6 +26,7 @@ export default function ConversationItem({
   const { conversationId: activeConversationId } = useParams()
   const selected = activeConversationId === conversation.ID
   const navigate = useNavigate()
+  const {recipients} = useRecipients(conversation?.RecipientIDs)
 
   return (
     <ListItem sx={{"--ListItem-radius": "8px"}} {...rest}>
@@ -37,18 +39,18 @@ export default function ConversationItem({
         sx={{ flexDirection: 'row', alignItems: 'flex-start', gap: 1 }}
       >
         <AvatarGroup>
-          {conversation.OtherParticipantIDs.map((id, i) => (
+          {conversation.RecipientIDs.map((id, i) => (
             <UserAvatar key={`${id}-${i}`} id={id} size={'sm'} />
           ))}
-          {conversation.OtherParticipantIDs.length > 2 && (
+          {conversation.RecipientIDs.length > 2 && (
             <Avatar size={'sm'}>
-              +{conversation.OtherParticipantIDs.length - 2}
+              +{conversation.RecipientIDs.length - 2}
             </Avatar>
           )}
         </AvatarGroup>
         <Box flexGrow={1}>
           <Typography level="title-sm" sx={{ flex: '1 1 auto' }}>
-            {conversation.Name}
+            {recipients.map(r => r?.Username).join(', ')}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" mt={0.75}>
             <Typography

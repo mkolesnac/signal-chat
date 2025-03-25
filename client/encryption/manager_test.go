@@ -51,15 +51,15 @@ func TestUserService_Decrypt(t *testing.T) {
 		}
 
 		wantPlaintext := []byte("Hello world!")
-		encrypted, err := senderEncryptor.Encrypt(wantPlaintext, "bob")
+		encrypted, err := senderEncryptor.pairwiseEncrypt(wantPlaintext, "bob")
 		require.NoError(t, err)
 
 		// Act
-		decrypted, err := recipientEncryptor.Decrypt(encrypted.Serialized, "alice")
+		decrypted, err := recipientEncryptor.pairwiseDecrypt(encrypted, "alice")
 
 		// Assert
 		assert.NoError(t, err)
-		assert.Equal(t, string(wantPlaintext), string(decrypted.Plaintext))
+		assert.Equal(t, string(wantPlaintext), string(decrypted))
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/crossle/libsignal-protocol-go/ecc"
+	"github.com/crossle/libsignal-protocol-go/groups"
 	"github.com/crossle/libsignal-protocol-go/keys/identity"
 	"github.com/crossle/libsignal-protocol-go/keys/prekey"
 	"github.com/crossle/libsignal-protocol-go/protocol"
@@ -19,9 +20,10 @@ import (
 
 type encryptor interface {
 	InitializeKeyStore() (api.KeyBundle, error)
-	Encrypt(plaintext []byte, recipientID string) (*EncryptedMessage, error)
-	Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage, error)
-	EncryptionMaterial(otherUserID string) *Material
+	CreateEncryptionGroup(groupID string, recipientIDs []string) (map[string][]byte, error)
+	ProcessSenderKeyDistributionMessage(groupID, senderID string, encryptedMsg []byte) error
+	GroupEncrypt(groupID string, plaintext []byte) (*EncryptedMessage, error)
+	GroupDecrypt(groupID, senderID string, ciphertext []byte) (*DecryptedMessage, error)
 }
 
 type Manager struct {
@@ -89,35 +91,85 @@ func (s *Manager) InitializeKeyStore() (api.KeyBundle, error) {
 	}, nil
 }
 
-func (s *Manager) EncryptionMaterial(otherUserID string) *Material {
-	addr := protocol.NewSignalAddress(otherUserID, 1)
-
-	if !s.store.ContainsSession(addr) {
-		return nil
+func (s *Manager) CreateEncryptionGroup(groupID string, recipientIDs []string) (map[string][]byte, error) {
+	keyName := protocol.NewSenderKeyName(groupID, protocol.NewSignalAddress("-", 1)) // - is name for my key
+	builder := groups.NewGroupSessionBuilder(s.store, s.serializer)
+	keyMsg, err := builder.Create(keyName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create group session: %w", err)
 	}
 
-	sessionRecord := s.store.LoadSession(addr)
-	sessionState := sessionRecord.SessionState()
-	chainKey := sessionState.SenderChainKey()
-	messageKeys := chainKey.MessageKeys()
-
-	senderRatchet := sessionState.SenderRatchetKey().PublicKey()
-	return &Material{
-		RootKey:                sessionState.RootKey().Bytes(),
-		SenderChainKey:         sessionState.SenderChainKey().Key(),
-		SenderRatchetKey:       senderRatchet[:],
-		PreviousMessageCounter: sessionState.PreviousCounter(),
-		SessionVersion:         sessionState.Version(),
-		MessageKeys: MessageKeys{
-			CipherKey: messageKeys.CipherKey(),
-			MacKey:    messageKeys.MacKey(),
-			IV:        messageKeys.Iv(),
-			Index:     messageKeys.Index(),
-		},
+	keyMsgBytes := keyMsg.Serialize()
+	messages := make(map[string][]byte)
+	for _, id := range recipientIDs {
+		ciphertext, err := s.pairwiseEncrypt(keyMsgBytes, id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt key distribution message for user %s: %w", id, err)
+		}
+		messages[id] = ciphertext
 	}
+
+	return messages, nil
 }
 
-func (s *Manager) Encrypt(plaintext []byte, recipientID string) (*EncryptedMessage, error) {
+func (s *Manager) ProcessSenderKeyDistributionMessage(groupID, senderID string, encryptedMsg []byte) error {
+	plaintext, err := s.pairwiseDecrypt(encryptedMsg, senderID)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt key distribution message from user %s: %w", senderID, err)
+	}
+
+	keyName := protocol.NewSenderKeyName(groupID, protocol.NewSignalAddress(senderID, 1))
+	builder := groups.NewGroupSessionBuilder(s.store, s.serializer)
+	keyMessage, err := protocol.NewSenderKeyDistributionMessageFromBytes(plaintext, s.store.serializer.SenderKeyDistributionMessage)
+	if err != nil {
+		return fmt.Errorf("failed to deserialize sender key distribution message: %w", err)
+	}
+
+	builder.Process(keyName, keyMessage)
+	return nil
+}
+
+func (s *Manager) GroupEncrypt(groupID string, plaintext []byte) (*EncryptedMessage, error) {
+	keyName := protocol.NewSenderKeyName(groupID, protocol.NewSignalAddress("-", 1))
+
+	senderKey := s.store.LoadSenderKey(keyName)
+	if senderKey == nil {
+		panic("Sender key for group not found")
+	}
+
+	builder := groups.NewGroupSessionBuilder(s.store, s.serializer)
+	cipher := groups.NewGroupCipher(builder, keyName, s.store)
+	ciphertext, err := cipher.Encrypt(plaintext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt group message: %w", err)
+	}
+
+	return newEncryptedMessage(ciphertext), nil
+}
+
+func (s *Manager) GroupDecrypt(groupID, senderID string, ciphertext []byte) (*DecryptedMessage, error) {
+	keyName := protocol.NewSenderKeyName(groupID, protocol.NewSignalAddress(senderID, 1))
+	senderKey := s.store.LoadSenderKey(keyName)
+	if senderKey == nil {
+		panic("Sender key for group not found")
+	}
+
+	msg, err := protocol.NewSenderKeyMessageFromBytes(ciphertext, s.serializer.SenderKeyMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deserialize cipthertext: %w", err)
+	}
+
+	builder := groups.NewGroupSessionBuilder(s.store, s.serializer)
+	cipher := groups.NewGroupCipher(builder, keyName, s.store)
+	plaintext, err := cipher.Decrypt(msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt group message: %w", err)
+	}
+
+	return newDecryptedMessage(plaintext, msg), nil
+}
+
+func (s *Manager) pairwiseEncrypt(plaintext []byte, recipientID string) ([]byte, error) {
 	addr := protocol.NewSignalAddress(recipientID, 1)
 	var cipher *session.Cipher
 	if !s.store.ContainsSession(addr) {
@@ -137,18 +189,18 @@ func (s *Manager) Encrypt(plaintext []byte, recipientID string) (*EncryptedMessa
 		cipher = session.NewCipherFromSession(addr, s.store, s.store, s.store, s.serializer.PreKeySignalMessage, s.serializer.SignalMessage)
 	}
 
-	ciphertext, err := cipher.Encrypt(plaintext)
+	encrypted, err := cipher.Encrypt(plaintext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt the message: %w", err)
 	}
 
-	return newEncryptedMessage(ciphertext), nil
+	return encrypted.Serialize(), nil
 }
 
-func (s *Manager) Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage, error) {
+func (s *Manager) pairwiseDecrypt(encryptedMsg []byte, senderID string) ([]byte, error) {
 	addr := protocol.NewSignalAddress(senderID, 1)
 	if !s.store.ContainsSession(addr) {
-		msg, err := protocol.NewPreKeySignalMessageFromBytes(ciphertext, s.serializer.PreKeySignalMessage, s.serializer.SignalMessage)
+		msg, err := protocol.NewPreKeySignalMessageFromBytes(encryptedMsg, s.serializer.PreKeySignalMessage, s.serializer.SignalMessage)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshall pre key signal message: %w", err)
 		}
@@ -159,10 +211,10 @@ func (s *Manager) Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt pre key signal message: %w", err)
 		}
-		return newDecryptedMessage(plaintext, msg), nil
+		return plaintext, nil
 	}
 
-	msg, err := protocol.NewSignalMessageFromBytes(ciphertext, s.serializer.SignalMessage)
+	msg, err := protocol.NewSignalMessageFromBytes(encryptedMsg, s.serializer.SignalMessage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshall signal message: %w", err)
 	}
@@ -172,7 +224,7 @@ func (s *Manager) Decrypt(ciphertext []byte, senderID string) (*DecryptedMessage
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt signal message: %w", err)
 	}
-	return newDecryptedMessage(plaintext, msg), nil
+	return plaintext, nil
 }
 
 func (s *Manager) getPreKeyBundle(recipientID string) (*prekey.Bundle, error) {

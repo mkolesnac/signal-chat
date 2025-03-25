@@ -277,30 +277,28 @@ func (k *KeyStore) RemoveSignedPreKey(signedPreKeyID uint32) {
 }
 
 func (k *KeyStore) StoreSenderKey(senderKeyName *protocol.SenderKeyName, keyRecord *grouprecord.SenderKey) {
-	panic("invalid key")
-	//key := fmt.Sprintf("senderKey#%v", *senderKeyName)
-	//err := k.db.Write(key, keyRecord.Serialize())
-	//if err != nil {
-	//	panic(err)
-	//}
+	// TODO: Use different key name, device is separate from sender name also by ':'
+	key := fmt.Sprintf("senderKey#%v:%v", senderKeyName.GroupID(), senderKeyName.Sender().String())
+	err := k.db.Write(key, keyRecord.Serialize())
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (k *KeyStore) LoadSenderKey(senderKeyName *protocol.SenderKeyName) *grouprecord.SenderKey {
-	panic("invalid key")
+	key := fmt.Sprintf("senderKey#%v:%v", senderKeyName.GroupID(), senderKeyName.Sender().String())
+	bytes, err := k.db.Read(key)
+	if err != nil {
+		panic(err)
+	}
+	if bytes == nil {
+		return nil
+	}
 
-	//key := fmt.Sprintf("senderKey#%v", *senderKeyName)
-	//bytes, err := k.db.Read(key)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//if bytes == nil {
-	//	return nil
-	//}
-	//
-	//senderKey, err := grouprecord.NewSenderKeyFromBytes(bytes, k.serializer.SenderKeyRecord, k.serializer.SenderKeyState)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//return senderKey
+	senderKey, err := grouprecord.NewSenderKeyFromBytes(bytes, k.serializer.SenderKeyRecord, k.serializer.SenderKeyState)
+	if err != nil {
+		panic(err)
+	}
+
+	return senderKey
 }

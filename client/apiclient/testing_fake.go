@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"math/rand"
 	"net/http"
-	"signal-chat/client/utils"
 	"signal-chat/internal/api"
 	"strings"
 	"sync"
@@ -228,28 +227,35 @@ func (f *Fake) Post(route string, payload any) (int, []byte, error) {
 			return f.badRequestResponse("invalid payload")
 		}
 
-		convID := uuid.New().String()
-		for _, id := range req.OtherParticipantIDs {
-			otherParticipants := utils.Filter(req.OtherParticipantIDs, func(s string) bool { return s != id })
-			syncData := f.userSyncData[id]
+		for _, current := range req.Recipients {
+			otherRecipientIDs := []string{sender.id}
+			for _, r := range req.Recipients {
+				if r.ID != current.ID {
+					otherRecipientIDs = append(otherRecipientIDs, r.ID)
+				}
+			}
+
+			syncData := f.userSyncData[current.ID]
 			syncData.NewConversations = append(syncData.NewConversations, api.WSNewConversationPayload{
-				ConversationID:      convID,
-				Name:                req.Name,
-				OtherParticipantIDs: otherParticipants,
+				ConversationID:         req.ConversationID,
+				SenderID:               sender.id,
+				RecipientIDs:           otherRecipientIDs,
+				KeyDistributionMessage: current.KeyDistributionMessage,
 			})
-			f.userSyncData[id] = syncData
+			f.userSyncData[current.ID] = syncData
 		}
 
+		recipientIDs := []string{sender.id}
+		for _, r := range req.Recipients {
+			recipientIDs = append(recipientIDs, r.ID)
+		}
 		conv := Conversation{
-			ID:             convID,
-			Name:           req.Name,
-			ParticipantIDs: append(req.OtherParticipantIDs, sender.id),
+			ID:             req.ConversationID,
+			ParticipantIDs: recipientIDs,
 		}
-		f.conversations[convID] = conv
+		f.conversations[conv.ID] = conv
 
-		return f.respond(http.StatusOK, api.CreateConversationResponse{
-			ConversationID: convID,
-		})
+		return f.respond(http.StatusOK, api.CreateConversationResponse{})
 	case api.EndpointMessages:
 		req, ok := payload.(api.CreateMessageRequest)
 		if !ok {

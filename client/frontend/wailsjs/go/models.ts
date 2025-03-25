@@ -73,18 +73,10 @@ export namespace api {
 export namespace encryption {
 	
 	export class Envelope {
-	    MessageType: number;
-	    RatchetKey: number[];
-	    Counter: number;
-	    PreviousCounter: number;
+	    KeyID: number;
 	    Version: number;
-	    Mac: number[];
-	    SenderRatchetKey: number[];
-	    RegistrationID: number;
-	    SignedPreKeyID: number;
-	    PreKeyID: number;
-	    IdentityKey: number[];
-	    BaseKey: number[];
+	    Iteration: number;
+	    Signature: number[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Envelope(source);
@@ -92,18 +84,10 @@ export namespace encryption {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.MessageType = source["MessageType"];
-	        this.RatchetKey = source["RatchetKey"];
-	        this.Counter = source["Counter"];
-	        this.PreviousCounter = source["PreviousCounter"];
+	        this.KeyID = source["KeyID"];
 	        this.Version = source["Version"];
-	        this.Mac = source["Mac"];
-	        this.SenderRatchetKey = source["SenderRatchetKey"];
-	        this.RegistrationID = source["RegistrationID"];
-	        this.SignedPreKeyID = source["SignedPreKeyID"];
-	        this.PreKeyID = source["PreKeyID"];
-	        this.IdentityKey = source["IdentityKey"];
-	        this.BaseKey = source["BaseKey"];
+	        this.Iteration = source["Iteration"];
+	        this.Signature = source["Signature"];
 	    }
 	}
 	export class DecryptedMessage {
@@ -174,67 +158,6 @@ export namespace encryption {
 		    return a;
 		}
 	}
-	
-	export class MessageKeys {
-	    CipherKey: number[];
-	    MacKey: number[];
-	    IV: number[];
-	    Index: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new MessageKeys(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.CipherKey = source["CipherKey"];
-	        this.MacKey = source["MacKey"];
-	        this.IV = source["IV"];
-	        this.Index = source["Index"];
-	    }
-	}
-	export class Material {
-	    RootKey: number[];
-	    SenderChainKey: number[];
-	    ReceiverChainKey: number[];
-	    SenderRatchetKey: number[];
-	    PreviousMessageCounter: number;
-	    SessionVersion: number;
-	    MessageKeys: MessageKeys;
-	
-	    static createFrom(source: any = {}) {
-	        return new Material(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.RootKey = source["RootKey"];
-	        this.SenderChainKey = source["SenderChainKey"];
-	        this.ReceiverChainKey = source["ReceiverChainKey"];
-	        this.SenderRatchetKey = source["SenderRatchetKey"];
-	        this.PreviousMessageCounter = source["PreviousMessageCounter"];
-	        this.SessionVersion = source["SessionVersion"];
-	        this.MessageKeys = this.convertValues(source["MessageKeys"], MessageKeys);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 
 }
 
@@ -242,12 +165,10 @@ export namespace models {
 	
 	export class Conversation {
 	    ID: string;
-	    Name: string;
-	    Mode: number;
 	    LastMessagePreview: string;
 	    LastMessageSenderID: string;
 	    LastMessageTimestamp: number;
-	    OtherParticipantIDs: string[];
+	    RecipientIDs: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Conversation(source);
@@ -256,12 +177,10 @@ export namespace models {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ID = source["ID"];
-	        this.Name = source["Name"];
-	        this.Mode = source["Mode"];
 	        this.LastMessagePreview = source["LastMessagePreview"];
 	        this.LastMessageSenderID = source["LastMessageSenderID"];
 	        this.LastMessageTimestamp = source["LastMessageTimestamp"];
-	        this.OtherParticipantIDs = source["OtherParticipantIDs"];
+	        this.RecipientIDs = source["RecipientIDs"];
 	    }
 	}
 	export class Message {

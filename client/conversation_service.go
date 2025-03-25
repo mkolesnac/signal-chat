@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"net/http"
 	"signal-chat/client/database"
 	"signal-chat/client/encryption"
@@ -21,9 +22,10 @@ type ConversationAPI interface {
 }
 
 type Encryptor interface {
-	Encrypt(plaintext []byte, recipientID string) (*encryption.EncryptedMessage, error)
-	Decrypt(ciphertext []byte, senderID string) (*encryption.DecryptedMessage, error)
-	EncryptionMaterial(otherUserID string) *encryption.Material
+	CreateEncryptionGroup(groupID string, recipientIDs []string) (map[string][]byte, error)
+	ProcessSenderKeyDistributionMessage(groupID, senderID string, encryptedMsg []byte) error
+	GroupEncrypt(groupID string, plaintext []byte) (*encryption.EncryptedMessage, error)
+	GroupDecrypt(groupID, senderID string, ciphertext []byte) (*encryption.DecryptedMessage, error)
 }
 
 type ConversationService struct {
@@ -56,10 +58,14 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 	}
 
 	for _, payload := range s.NewConversations {
+		err := c.encryptor.ProcessSenderKeyDistributionMessage(payload.ConversationID, payload.SenderID, payload.KeyDistributionMessage)
+		if err != nil {
+			return err
+		}
+
 		conv := models.Conversation{
-			ID:                  payload.ConversationID,
-			Name:                payload.Name,
-			OtherParticipantIDs: payload.OtherParticipantIDs,
+			ID:           payload.ConversationID,
+			RecipientIDs: payload.RecipientIDs,
 		}
 		if err := c.writeConversation(conv); err != nil {
 			return err
@@ -72,7 +78,7 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 			return err
 		}
 
-		decrypted, err := c.encryptor.Decrypt(payload.EncryptedMessage, payload.SenderID)
+		decrypted, err := c.encryptor.GroupDecrypt(conv.ID, payload.SenderID, payload.EncryptedMessage)
 		if err != nil {
 			return fmt.Errorf("decryption failed: %w", err)
 		}
@@ -106,10 +112,14 @@ func (c *ConversationService) handleNewConversation(data json.RawMessage) error 
 		return err
 	}
 
+	err := c.encryptor.ProcessSenderKeyDistributionMessage(p.ConversationID, p.SenderID, p.KeyDistributionMessage)
+	if err != nil {
+		return err
+	}
+
 	conv := models.Conversation{
-		ID:                  p.ConversationID,
-		Name:                p.Name,
-		OtherParticipantIDs: p.OtherParticipantIDs,
+		ID:           p.ConversationID,
+		RecipientIDs: p.RecipientIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
 		return err
@@ -133,7 +143,7 @@ func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
 		return err
 	}
 
-	decrypted, err := c.encryptor.Decrypt(p.EncryptedMessage, p.SenderID)
+	decrypted, err := c.encryptor.GroupDecrypt(conv.ID, p.SenderID, p.EncryptedMessage)
 	if err != nil {
 		return fmt.Errorf("decryption failed: %w", err)
 	}
@@ -211,20 +221,30 @@ func (c *ConversationService) ListMessages(conversationID string) ([]models.Mess
 	return messages, nil
 }
 
-func (c *ConversationService) CreateConversation(name string, otherParticipantIDs []string, mode models.ConversationMode) (models.Conversation, error) {
-	panicIfEmpty("name", name)
-	if len(otherParticipantIDs) == 0 {
-		panic("otherParticipantIDs must not be empty")
-	}
-	if mode == models.OneOnOne && len(otherParticipantIDs) > 1 {
-		panic("only one-to-one conversations are supported now")
+func (c *ConversationService) CreateConversation(recipientIDs []string) (models.Conversation, error) {
+	if len(recipientIDs) == 0 {
+		panic("recipientIDs must not be empty")
 	}
 
-	req := api.CreateConversationRequest{
-		Name:                name,
-		Mode:                int(mode),
-		OtherParticipantIDs: otherParticipantIDs,
+	id := uuid.New().String()
+
+	keyMessages, err := c.encryptor.CreateEncryptionGroup(id, recipientIDs)
+	if err != nil {
+		return models.Conversation{}, fmt.Errorf("failed to generate key distribution messages: %w", err)
 	}
+
+	recipients := make([]api.Recipient, len(recipientIDs))
+	for i, id := range recipientIDs {
+		recipients[i] = api.Recipient{
+			ID:                     id,
+			KeyDistributionMessage: keyMessages[id],
+		}
+	}
+	req := api.CreateConversationRequest{
+		ConversationID: id,
+		Recipients:     recipients,
+	}
+
 	status, body, err := c.api.Post(api.EndpointConversations, req)
 	if err != nil {
 		return models.Conversation{}, err
@@ -232,6 +252,7 @@ func (c *ConversationService) CreateConversation(name string, otherParticipantID
 	if status != http.StatusOK {
 		return models.Conversation{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
 	}
+
 	var resp api.CreateConversationResponse
 	err = json.Unmarshal(body, &resp)
 	if err != nil {
@@ -239,10 +260,8 @@ func (c *ConversationService) CreateConversation(name string, otherParticipantID
 	}
 
 	conv := models.Conversation{
-		ID:                  resp.ConversationID,
-		Name:                name,
-		Mode:                mode,
-		OtherParticipantIDs: otherParticipantIDs,
+		ID:           id,
+		RecipientIDs: recipientIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
 		return models.Conversation{}, err
@@ -260,9 +279,7 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 		return models.Message{}, err
 	}
 
-	recipientID := conv.OtherParticipantIDs[0]
-
-	encrypted, err := c.encryptor.Encrypt([]byte(messageText), recipientID)
+	encrypted, err := c.encryptor.GroupEncrypt(conv.ID, []byte(messageText))
 	if err != nil {
 		return models.Message{}, fmt.Errorf("failed to encrypt message content: %w", err)
 	}

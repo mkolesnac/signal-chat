@@ -41,8 +41,8 @@ export default function Sidebar() {
   })
 
   const mutation = useMutation({
-    mutationFn: async (variables: { name: string; participantIds: string[] }) =>
-      CreateConversation(variables.name, variables.participantIds, 0),
+    mutationFn: async (variables: { recipientIds: string[] }) =>
+      CreateConversation(variables.recipientIds),
     onSuccess: (newConversation) => {
       queryClient.setQueryData(
         ['conversations'],
@@ -78,8 +78,8 @@ export default function Sidebar() {
     }
   })
 
-  const handleCreateDialogAccept = (name: string, user: User[]) => {
-    mutation.mutate({ name, participantIds: user.map((u) => u.ID) })
+  const handleCreateDialogAccept = (recipients: User[]) => {
+    mutation.mutate({ recipientIds: recipients.map((u) => u.ID) })
     setNewDialogOpen(false)
   }
 
