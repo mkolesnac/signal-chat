@@ -6,7 +6,12 @@ type SignUpRequest struct {
 	KeyBundle KeyBundle `json:"keyBundle" validate:"required"`
 }
 
-type SignUpResponse struct {
+type SignInRequest struct {
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
+}
+
+type AuthResponse struct {
 	UserID string `json:"userId"`
-	Error  string `json:"error,omitempty"`
+	Token  string `json:"token"`
 }

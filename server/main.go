@@ -1,41 +1,33 @@
 package main
 
 import (
-	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"signal-chat/server/auth"
-	"signal-chat/server/handlers"
-	"signal-chat/server/services"
-	"signal-chat/server/storage"
+	"flag"
+	"github.com/dgraph-io/badger/v4"
+	"log"
 )
 
-type Options struct {
-	Host string
-	Port int
-}
-
 func main() {
-	backend := storage.NewMemoryStore()
-	accounts := services.NewAccountService(backend)
-	websockets := services.NewWebsocketManager()
-	conversations := services.NewConversationService(backend, websockets)
+	// Parse command line flags
+	host := flag.String("host", "localhost", "Host to listen on")
+	port := flag.Int("port", 8080, "Port to listen on")
+	flag.Parse()
 
-	accountsHandler := handlers.NewAccountHandler(accounts)
-	conversationHandler := handlers.NewConversationHandler(conversations)
-	websocketsHandler := handlers.NewWebsocketHandler(websockets)
+	// Initialize database
+	dbOpts := badger.DefaultOptions("./data")
+	db, err := badger.Open(dbOpts)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
 
-	e := echo.New()
-	e.Validator = handlers.NewCustomValidator()
-	// Register public routes
-	accountsHandler.RegisterPublicRoutes(e)
+	// Initialize server
+	server, err := NewServer(db)
+	if err != nil {
+		log.Fatalf("Failed to create server: %v", err)
+	}
 
-	// Register routes requiring authentication
-	authGroup := e.Group("")
-	authGroup.Use(middleware.BasicAuth(auth.BasicAuthMiddleware(accounts)))
-	accountsHandler.RegisterPrivateRoutes(authGroup)
-	conversationHandler.RegisterRoutes(authGroup)
-	websocketsHandler.RegisterRoutes(authGroup)
-
-	e.Logger.Fatal(e.Start(fmt.Sprintf("%s:%d", options.Host, options.Port)))
+	// Start server
+	if err := server.Start(*host, *port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

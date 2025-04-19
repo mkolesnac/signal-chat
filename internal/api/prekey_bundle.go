@@ -1,9 +1,8 @@
 package api
 
 type PreKeyBundle struct {
-	RegistrationID        uint32 `json:"registration_id"`
-	IdentityKey           []byte `json:"identityKey"`
-	SignedPreKey          PreKey `json:"signedPreKey"`
-	SignedPreKeySignature []byte `json:"signedPreKeySignature"`
-	PreKey                PreKey `json:"preKey"`
+	RegistrationID uint32       `json:"registration_id"`
+	IdentityKey    []byte       `json:"identityKey"`
+	SignedPreKey   SignedPreKey `json:"signedPreKey"`
+	PreKey         PreKey       `json:"preKey"`
 }

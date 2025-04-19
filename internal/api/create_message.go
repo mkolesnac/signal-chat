@@ -1,14 +1,14 @@
 package api
 
-type CreateMessageRequest struct {
+type NewMessageRequest struct {
 	ConversationID   string `json:"conversationID" validate:"required"`
 	EncryptedMessage []byte `json:"encryptedMessage" validate:"required"`
 }
 
-type CreateMessageResponse struct {
+type NewMessageResponse struct {
 	Error     string `json:"error,omitempty"`
 	MessageID string `json:"messageID,omitempty"`
-	Timestamp int64  `json:"timestamp,omitempty"`
+	CreatedAt int64  `json:"timestamp,omitempty"`
 }
 
 type WSNewMessagePayload struct {
@@ -16,5 +16,5 @@ type WSNewMessagePayload struct {
 	MessageID        string `json:"messageID"`
 	SenderID         string `json:"senderID"`
 	EncryptedMessage []byte `json:"encryptedMessage"`
-	Timestamp        int64  `json:"timestamp"`
+	CreatedAt        int64  `json:"createdAt"`
 }

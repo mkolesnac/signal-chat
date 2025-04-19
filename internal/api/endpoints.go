@@ -8,13 +8,7 @@ const (
 	EndpointSignOut       = prefix + "/signout"
 	EndpointConversations = prefix + "/conversations"
 	EndpointMessages      = prefix + "/messages"
-	EndpointParticipants  = prefix + "/participants"
+	EndpointUsers         = prefix + "/users"
+	EndpointUser          = prefix + "/users/:id"
+	EndpointUserKeys      = prefix + "/users/:id/keys"
 )
-
-func EndpointUser(userId string) string {
-	return prefix + "/user/" + userId
-}
-
-func EndpointUserKeys(userId string) string {
-	return prefix + "/user/" + userId + "/keys"
-}
