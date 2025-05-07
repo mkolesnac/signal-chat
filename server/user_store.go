@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"math/big"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 )
 
 var (
@@ -23,16 +23,16 @@ type UserStore struct {
 	db *badger.DB
 }
 
-func (r *UserStore) CreateUser(username, password string, keyBundle api.KeyBundle) (*api.User, error) {
+func (r *UserStore) CreateUser(username, password string, keyBundle apitypes.KeyBundle) (apitypes.User, error) {
 	userID := uuid.New().String()
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return apitypes.User{}, err
 	}
 
 	keyBundleJSON, err := json.Marshal(keyBundle)
 	if err != nil {
-		return nil, err
+		return apitypes.User{}, err
 	}
 
 	err = r.db.Update(func(txn *badger.Txn) error {
@@ -67,17 +67,17 @@ func (r *UserStore) CreateUser(username, password string, keyBundle api.KeyBundl
 	})
 
 	if err != nil {
-		return nil, err
+		return apitypes.User{}, err
 	}
 
-	return &api.User{
+	return apitypes.User{
 		ID:       userID,
 		Username: username,
 	}, nil
 }
 
-func (r *UserStore) GetAllUsers() ([]*api.User, error) {
-	var users []*api.User
+func (r *UserStore) GetAllUsers() ([]apitypes.User, error) {
+	var users []apitypes.User
 
 	err := r.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -91,7 +91,7 @@ func (r *UserStore) GetAllUsers() ([]*api.User, error) {
 
 			err := item.Value(func(v []byte) error {
 				username := string(v)
-				users = append(users, &api.User{
+				users = append(users, apitypes.User{
 					ID:       userID,
 					Username: username,
 				})
@@ -107,8 +107,8 @@ func (r *UserStore) GetAllUsers() ([]*api.User, error) {
 	return users, err
 }
 
-func (r *UserStore) GetUserByID(id string) (*api.User, error) {
-	user := &api.User{
+func (r *UserStore) GetUserByID(id string) (apitypes.User, error) {
+	user := apitypes.User{
 		ID: id,
 	}
 
@@ -128,14 +128,14 @@ func (r *UserStore) GetUserByID(id string) (*api.User, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return apitypes.User{}, err
 	}
 
 	return user, nil
 }
 
-func (r *UserStore) GetPreKeyBundle(userID string) (*api.PreKeyBundle, error) {
-	var preKeyBundle *api.PreKeyBundle
+func (r *UserStore) GetPreKeyBundle(userID string) (apitypes.PreKeyBundle, error) {
+	var preKeyBundle apitypes.PreKeyBundle
 
 	err := r.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(keyBundleItemKey(userID))
@@ -147,7 +147,7 @@ func (r *UserStore) GetPreKeyBundle(userID string) (*api.PreKeyBundle, error) {
 		}
 
 		return item.Value(func(val []byte) error {
-			var keyBundle api.KeyBundle
+			var keyBundle apitypes.KeyBundle
 			err = json.Unmarshal(val, &keyBundle)
 			if err != nil {
 				return err
@@ -171,14 +171,14 @@ func (r *UserStore) GetPreKeyBundle(userID string) (*api.PreKeyBundle, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return apitypes.PreKeyBundle{}, err
 	}
 
 	return preKeyBundle, nil
 }
 
-func (r *UserStore) VerifyCredentials(username, password string) (*api.User, error) {
-	user := &api.User{
+func (r *UserStore) VerifyCredentials(username, password string) (apitypes.User, error) {
+	user := apitypes.User{
 		Username: username,
 	}
 	var storedHash []byte
@@ -211,15 +211,15 @@ func (r *UserStore) VerifyCredentials(username, password string) (*api.User, err
 	})
 
 	if err != nil {
-		return nil, err
+		return apitypes.User{}, err
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return apitypes.User{}, err
 	}
 	if !bytes.Equal(storedHash, hashedPassword) {
-		return nil, ErrInvalidCredentials
+		return apitypes.User{}, ErrInvalidCredentials
 	}
 
 	return user, nil
@@ -257,7 +257,7 @@ func takeRandomItem[T any](slice []T) (T, []T, error) {
 
 	randomIndex := int(randomBig.Int64())
 
-	// Get the selected item
+	// get the selected item
 	selectedItem := slice[randomIndex]
 
 	// Remove the item from the slice

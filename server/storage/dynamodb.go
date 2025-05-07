@@ -19,7 +19,7 @@ type DynamoDBStore struct {
 }
 
 func NewDynamoDBStore() *DynamoDBStore {
-	// Create a new DynamoDBStore session
+	// CreateUser a new DynamoDBStore session
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
@@ -126,7 +126,7 @@ func (s *DynamoDBStore) UpdateItem(pk, sk string, updates map[string]interface{}
 
 	updateExpr := "SET " + strings.Join(updateExprParts, ", ")
 
-	// Create the UpdateItemInput
+	// CreateUser the UpdateItemInput
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -167,7 +167,7 @@ func (s *DynamoDBStore) WriteItem(resource Resource) error {
 	av["pk"] = &dynamodb.AttributeValue{S: aws.String(resource.PartitionKey)}
 	av["sk"] = &dynamodb.AttributeValue{S: aws.String(resource.SortKey)}
 
-	// Create the PutItem input
+	// CreateUser the PutItem input
 	input := &dynamodb.PutItemInput{
 		TableName: aws.String(tableName),
 		Item:      av,
@@ -209,7 +209,7 @@ func (s *DynamoDBStore) BatchWriteItems(resources []Resource) error {
 			})
 		}
 
-		// Create the batch write input
+		// CreateUser the batch write input
 		input := &dynamodb.BatchWriteItemInput{
 			RequestItems: map[string][]*dynamodb.WriteRequest{
 				tableName: writeRequests,

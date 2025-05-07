@@ -36,7 +36,7 @@ func (s *MemoryStore) QueryItems(pk, sk string, queryCondition QueryCondition) (
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Create a function that will evaluate sort key matches based on the specified query condition
+	// CreateUser a function that will evaluate sort key matches based on the specified query condition
 	skPrefix := strings.Split(sk, "#")[0]
 	type FilterFunc = func(sk string) bool
 	var skFilter FilterFunc
@@ -95,8 +95,8 @@ func (s *MemoryStore) UpdateItem(pk, sk string, updates map[string]interface{}) 
 	}
 
 	item := s.resources[index]
-	// Get the reflect.Value of the struct
-	v := reflect.ValueOf(&item).Elem() // Get a pointer to the value to make it addressable
+	// get the reflect.Value of the struct
+	v := reflect.ValueOf(&item).Elem() // get a pointer to the value to make it addressable
 
 	// Iterate over the updates and set the fields
 	for fieldName, value := range updates {

@@ -1,22 +1,20 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"regexp"
 	"signal-chat/client/models"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 )
 
 var ErrAuthInvalidEmail = errors.New("email is not a valid email address")
 var ErrAuthPwdTooShort = errors.New("password too short")
 
 type AuthAPI interface {
-	StartSession(username, password string) error
-	Close() error
-	Post(route string, payload any) (int, []byte, error)
+	SignUp(username, password string, keyBundle apitypes.KeyBundle) (apitypes.SignUpResponse, error)
+	SignIn(username, password string) (apitypes.SignInResponse, error)
+	Close()
 }
 
 type AuthDatabase interface {
@@ -25,7 +23,7 @@ type AuthDatabase interface {
 }
 
 type EncryptionInitializer interface {
-	InitializeKeyStore() (api.KeyBundle, error)
+	InitializeKeyStore() (apitypes.KeyBundle, error)
 }
 
 type Auth struct {
@@ -47,8 +45,7 @@ func (a *Auth) SignUp(email, pwd string) (models.User, error) {
 		return models.User{}, ErrAuthPwdTooShort
 	}
 
-	err := a.db.Open(email)
-	if err != nil {
+	if err := a.db.Open(email); err != nil {
 		return models.User{}, fmt.Errorf("failed to open user database: %w", err)
 	}
 
@@ -57,28 +54,9 @@ func (a *Auth) SignUp(email, pwd string) (models.User, error) {
 		return models.User{}, err
 	}
 
-	payload := api.SignUpRequest{
-		UserName:  email,
-		Password:  pwd,
-		KeyBundle: bundle,
-	}
-
-	status, body, err := a.apiClient.Post(api.EndpointSignUp, payload)
+	resp, err := a.apiClient.SignUp(email, pwd, bundle)
 	if err != nil {
-		return models.User{}, fmt.Errorf("got error from server: %w", err)
-	}
-	if status != http.StatusOK {
-		return models.User{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
-	}
-	var resp api.SignUpResponse
-	err = json.Unmarshal(body, &resp)
-	if err != nil {
-		return models.User{}, fmt.Errorf("got error unmarshalling response from server: %w", err)
-	}
-
-	err = a.apiClient.StartSession(email, pwd)
-	if err != nil {
-		return models.User{}, fmt.Errorf("failed to start API session: %w", err)
+		return models.User{}, fmt.Errorf("failed to sign up: %w", err)
 	}
 
 	a.signedIn = true
@@ -102,33 +80,15 @@ func (a *Auth) SignIn(email, pwd string) (models.User, error) {
 		return models.User{}, fmt.Errorf("failed to open user database: %w", err)
 	}
 
-	payload := api.SignInRequest{
-		Username: email,
-		Password: pwd,
-	}
-
-	status, body, err := a.apiClient.Post(api.EndpointSignIn, payload)
+	resp, err := a.apiClient.SignIn(email, pwd)
 	if err != nil {
-		return models.User{}, fmt.Errorf("got error from server: %w", err)
-	}
-	if status != http.StatusOK {
-		return models.User{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
-	}
-	var resp api.SignInResponse
-	err = json.Unmarshal(body, &resp)
-	if err != nil {
-		return models.User{}, fmt.Errorf("got error unmarshalling response from server: %w", err)
-	}
-
-	err = a.apiClient.StartSession(email, pwd)
-	if err != nil {
-		return models.User{}, fmt.Errorf("failed to start API session: %w", err)
+		return models.User{}, fmt.Errorf("failed to sign in: %w", err)
 	}
 
 	a.signedIn = true
 	user := models.User{
 		ID:       resp.UserID,
-		Username: resp.Username,
+		Username: email,
 	}
 	return user, nil
 }
@@ -138,10 +98,7 @@ func (a *Auth) SignOut() error {
 		panic("not signed in")
 	}
 
-	if err := a.apiClient.Close(); err != nil {
-		return fmt.Errorf("failed to close API session: %w", err)
-	}
-
+	a.apiClient.Close()
 	if err := a.db.Close(); err != nil {
 		return fmt.Errorf("failed to close database: %w", err)
 	}

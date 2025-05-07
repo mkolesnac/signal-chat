@@ -2,11 +2,11 @@ package ws
 
 import (
 	"encoding/json"
+	"signal-chat/internal/apitypes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"signal-chat/internal/api"
 )
 
 func TestMessageStore_Store(t *testing.T) {
@@ -20,15 +20,15 @@ func TestMessageStore_Store(t *testing.T) {
 			clientID: "test-client",
 		}
 
-		messages := []*api.WSMessage{
+		messages := []*apitypes.WSMessage{
 			{
 				ID:   "msg1",
-				Type: api.MessageTypeNewMessage,
+				Type: apitypes.MessageTypeNewMessage,
 				Data: json.RawMessage(`{"content": "Hello"}`),
 			},
 			{
 				ID:   "msg2",
-				Type: api.MessageTypeNewConversation,
+				Type: apitypes.MessageTypeNewConversation,
 				Data: json.RawMessage(`{"conversationId": "conv1"}`),
 			},
 		}
@@ -45,11 +45,11 @@ func TestMessageStore_Store(t *testing.T) {
 		require.Len(t, storedMessages, 2)
 
 		assert.Equal(t, "msg1", storedMessages[0].ID)
-		assert.Equal(t, api.MessageTypeNewMessage, storedMessages[0].Type)
+		assert.Equal(t, apitypes.MessageTypeNewMessage, storedMessages[0].Type)
 		assert.JSONEq(t, `{"content": "Hello"}`, string(storedMessages[0].Data))
 
 		assert.Equal(t, "msg2", storedMessages[1].ID)
-		assert.Equal(t, api.MessageTypeNewConversation, storedMessages[1].Type)
+		assert.Equal(t, apitypes.MessageTypeNewConversation, storedMessages[1].Type)
 		assert.JSONEq(t, `{"conversationId": "conv1"}`, string(storedMessages[1].Data))
 	})
 
@@ -64,7 +64,7 @@ func TestMessageStore_Store(t *testing.T) {
 		}
 
 		// Act
-		err := store.Store([]*api.WSMessage{})
+		err := store.Store([]*apitypes.WSMessage{})
 
 		// Assert
 		require.NoError(t, err)
@@ -87,10 +87,10 @@ func TestMessageStore_Delete(t *testing.T) {
 		}
 
 		// Store some messages first
-		messages := []*api.WSMessage{
-			{ID: "msg1", Type: api.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "Hello"}`)},
-			{ID: "msg2", Type: api.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "World"}`)},
-			{ID: "msg3", Type: api.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "!"}`)},
+		messages := []*apitypes.WSMessage{
+			{ID: "msg1", Type: apitypes.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "Hello"}`)},
+			{ID: "msg2", Type: apitypes.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "World"}`)},
+			{ID: "msg3", Type: apitypes.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "!"}`)},
 		}
 		err := store.Store(messages)
 		require.NoError(t, err)
@@ -154,10 +154,10 @@ func TestMessageStore_LoadAll(t *testing.T) {
 		}
 
 		// Store messages with different types
-		messages := []*api.WSMessage{
-			{ID: "msg1", Type: api.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "Hello"}`)},
-			{ID: "msg2", Type: api.MessageTypeNewConversation, Data: json.RawMessage(`{"conversationId": "conv1"}`)},
-			{ID: "msg3", Type: api.MessageTypeParticipantAdded, Data: json.RawMessage(`{"participantId": "user1"}`)},
+		messages := []*apitypes.WSMessage{
+			{ID: "msg1", Type: apitypes.MessageTypeNewMessage, Data: json.RawMessage(`{"content": "Hello"}`)},
+			{ID: "msg2", Type: apitypes.MessageTypeNewConversation, Data: json.RawMessage(`{"conversationId": "conv1"}`)},
+			{ID: "msg3", Type: apitypes.MessageTypeParticipantAdded, Data: json.RawMessage(`{"participantId": "user1"}`)},
 		}
 		err := store.Store(messages)
 		require.NoError(t, err)
@@ -171,15 +171,15 @@ func TestMessageStore_LoadAll(t *testing.T) {
 
 		// Verify each message
 		assert.Equal(t, "msg1", loadedMessages[0].ID)
-		assert.Equal(t, api.MessageTypeNewMessage, loadedMessages[0].Type)
+		assert.Equal(t, apitypes.MessageTypeNewMessage, loadedMessages[0].Type)
 		assert.JSONEq(t, `{"content": "Hello"}`, string(loadedMessages[0].Data))
 
 		assert.Equal(t, "msg2", loadedMessages[1].ID)
-		assert.Equal(t, api.MessageTypeNewConversation, loadedMessages[1].Type)
+		assert.Equal(t, apitypes.MessageTypeNewConversation, loadedMessages[1].Type)
 		assert.JSONEq(t, `{"conversationId": "conv1"}`, string(loadedMessages[1].Data))
 
 		assert.Equal(t, "msg3", loadedMessages[2].ID)
-		assert.Equal(t, api.MessageTypeParticipantAdded, loadedMessages[2].Type)
+		assert.Equal(t, apitypes.MessageTypeParticipantAdded, loadedMessages[2].Type)
 		assert.JSONEq(t, `{"participantId": "user1"}`, string(loadedMessages[2].Data))
 	})
 

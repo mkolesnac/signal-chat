@@ -10,7 +10,7 @@ type Conversation struct {
 	LastMessagePreview   string
 	LastMessageSenderID  string
 	LastMessageTimestamp int64
-	RecipientIDs         []string
+	ParticipantIDs       []string
 }
 
 func (c *Conversation) Serialize() ([]byte, error) {

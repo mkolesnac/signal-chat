@@ -9,7 +9,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"log"
 	"net/http"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 	"signal-chat/server/conversation"
 	"signal-chat/server/ws"
 	"time"
@@ -33,8 +33,8 @@ type Authenticator interface {
 type WebsocketManager interface {
 	RegisterClient(clientID string, conn ws.Connection) error
 	UnregisterClient(clientID string)
-	BroadcastNewConversation(senderID string, req api.NewConversationRequest) error
-	BroadcastNewMessage(senderID, messageID string, req api.NewMessageRequest) error
+	BroadcastNewConversation(senderID string, req apitypes.CreateConversationRequest) error
+	BroadcastNewMessage(senderID, messageID string, req apitypes.SendMessageRequest) error
 }
 
 type Server struct {
@@ -91,15 +91,15 @@ func NewServerWithConfig(db *badger.DB, config ServerConfig) (*Server, error) {
 	}
 
 	// Register routes
-	e.GET(api.EndpointUser, server.handleGetUser)
-	e.GET(api.EndpointUserKeys, server.handleGetUserKeys)
-	e.GET(api.EndpointUsers, server.handleGetAllUsers)
+	e.GET(apitypes.EndpointUser, server.handleGetUser)
+	e.GET(apitypes.EndpointPreKeyBundle, server.handleGetUserKeys)
+	e.GET(apitypes.EndpointUsers, server.handleGetAllUsers)
 
-	e.POST(api.EndpointSignUp, server.handleSignUp)
-	e.POST(api.EndpointSignIn, server.handleSignIn)
-	e.POST(api.EndpointSignOut, server.handleSignOut)
-	e.POST(api.EndpointConversations, server.handleCreateConversation)
-	e.POST(api.EndpointMessages, server.handleCreateMessage)
+	e.POST(apitypes.EndpointSignUp, server.handleSignUp)
+	e.POST(apitypes.EndpointSignIn, server.handleSignIn)
+	e.POST(apitypes.EndpointSignOut, server.handleSignOut)
+	e.POST(apitypes.EndpointConversations, server.handleCreateConversation)
+	e.POST(apitypes.EndpointMessages, server.handleCreateMessage)
 
 	// Add WebSocket endpoint
 	e.GET("/ws", server.handleWebSocketConnection)
@@ -115,7 +115,7 @@ func (s *Server) Start(host string, port int) error {
 }
 
 func (s *Server) handleSignUp(c echo.Context) error {
-	var req api.SignUpRequest
+	var req apitypes.SignUpRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -123,7 +123,7 @@ func (s *Server) handleSignUp(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	usr, err := s.userStore.CreateUser(req.UserName, req.Password, req.KeyBundle)
+	usr, err := s.userStore.CreateUser(req.Username, req.Password, req.KeyBundle)
 	if err != nil {
 		if errors.Is(err, ErrEmailExists) {
 			return echo.NewHTTPError(http.StatusConflict, "failed to create new user")
@@ -136,15 +136,15 @@ func (s *Server) handleSignUp(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate user token")
 	}
 
-	resp := api.AuthResponse{
-		UserID: usr.ID,
-		Token:  token,
+	resp := apitypes.SignUpResponse{
+		UserID:    usr.ID,
+		AuthToken: token,
 	}
 	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *Server) handleSignIn(c echo.Context) error {
-	var req api.SignInRequest
+	var req apitypes.SignInRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -165,9 +165,9 @@ func (s *Server) handleSignIn(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to generate user token")
 	}
 
-	resp := api.AuthResponse{
-		UserID: usr.ID,
-		Token:  token,
+	resp := apitypes.SignInResponse{
+		UserID:    usr.ID,
+		AuthToken: token,
 	}
 	return c.JSON(http.StatusOK, resp)
 }
@@ -187,7 +187,7 @@ func (s *Server) handleGetUser(c echo.Context) error {
 
 	id := c.Param("id")
 
-	usr, err := s.userStore.GetUserByID(id)
+	user, err := s.userStore.GetUserByID(id)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound)
@@ -195,7 +195,7 @@ func (s *Server) handleGetUser(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, usr)
+	return c.JSON(http.StatusOK, apitypes.GetUserResponse{User: user})
 }
 
 func (s *Server) handleGetAllUsers(c echo.Context) error {
@@ -208,7 +208,7 @@ func (s *Server) handleGetAllUsers(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, users)
+	return c.JSON(http.StatusOK, apitypes.GetAllUsersResponse{Users: users})
 }
 
 func (s *Server) handleGetUserKeys(c echo.Context) error {
@@ -225,7 +225,7 @@ func (s *Server) handleGetUserKeys(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, bundle)
+	return c.JSON(http.StatusOK, apitypes.GetPreKeyBundleResponse{PreKeyBundle: bundle})
 }
 
 func (s *Server) handleCreateConversation(c echo.Context) error {
@@ -234,7 +234,7 @@ func (s *Server) handleCreateConversation(c echo.Context) error {
 		return authErr
 	}
 
-	var req api.NewConversationRequest
+	var req apitypes.CreateConversationRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -247,7 +247,8 @@ func (s *Server) handleCreateConversation(c echo.Context) error {
 	for _, r := range req.OtherParticipants {
 		participantIDs = append(participantIDs, r.ID)
 	}
-	convID, err := s.conversationStore.CreateConversation(participantIDs)
+
+	err := s.conversationStore.CreateConversation(req.ConversationID, participantIDs)
 	if err != nil {
 		if errors.Is(err, conversation.ErrConversationExists) {
 			return echo.NewHTTPError(http.StatusConflict, "failed to create conversation")
@@ -260,8 +261,7 @@ func (s *Server) handleCreateConversation(c echo.Context) error {
 		log.Printf("Failed to broadcast new conversation: %v", err)
 	}
 
-	resp := api.NewConversationResponse{ConversationID: convID}
-	return c.JSON(http.StatusOK, resp)
+	return c.NoContent(http.StatusOK)
 }
 
 func (s *Server) handleCreateMessage(c echo.Context) error {
@@ -270,7 +270,7 @@ func (s *Server) handleCreateMessage(c echo.Context) error {
 		return authErr
 	}
 
-	var req api.NewMessageRequest
+	var req apitypes.SendMessageRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -278,7 +278,7 @@ func (s *Server) handleCreateMessage(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	messageID, err := s.conversationStore.CreateMessage(userID, req.ConversationID, req.EncryptedMessage)
+	messageID, err := s.conversationStore.CreateMessage(userID, req.ConversationID, req.Content)
 	if err != nil {
 		if errors.Is(err, conversation.ErrConversationNotFound) {
 			return echo.NewHTTPError(http.StatusNotFound)
@@ -294,8 +294,7 @@ func (s *Server) handleCreateMessage(c echo.Context) error {
 		// Continue even if broadcasting fails
 	}
 
-	resp := api.NewMessageResponse{MessageID: messageID}
-	return c.JSON(http.StatusOK, resp)
+	return c.JSON(http.StatusOK, apitypes.SendMessageResponse{MessageID: messageID})
 }
 
 func (s *Server) handleWebSocketConnection(c echo.Context) error {

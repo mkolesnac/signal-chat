@@ -23,7 +23,7 @@ func DeserializeMessage(data []byte) (Message, error) {
 	var m Message
 	err := json.Unmarshal(data, &m)
 	if err != nil {
-		return Message{}, fmt.Errorf("failed to deserialize Message: %w", err)
+		return Message{}, fmt.Errorf("failed to deserialize message: %w", err)
 	}
 
 	return m, nil

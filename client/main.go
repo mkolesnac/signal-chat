@@ -3,12 +3,11 @@ package main
 import (
 	"context"
 	"embed"
-	"fmt"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"signal-chat/client/apiclient"
+	"signal-chat/client/api"
 	"signal-chat/client/database"
 	"signal-chat/client/encryption"
 	"signal-chat/client/models"
@@ -19,12 +18,9 @@ import (
 var assets embed.FS
 
 func main() {
-	ac := apiclient.NewFake()
-	ac.SetErrorHandler(func(err error) {
-		fmt.Println("Error:", err)
-	})
+	ac := api.NewFakeClient()
 
-	// Create fake user1
+	// CreateUser fake user1
 	db1 := database.NewFake()
 	encryptor1 := encryption.NewEncryptionManager(db1, ac)
 	auth1 := NewAuth(db1, ac, encryptor1)
@@ -33,7 +29,7 @@ func main() {
 		panic(err)
 	}
 
-	// Create fake user 2
+	// CreateUser fake user 2
 	db2 := database.NewFake()
 	encryptor2 := encryption.NewEncryptionManager(db2, ac)
 	auth2 := NewAuth(db2, ac, encryptor2)
@@ -43,7 +39,7 @@ func main() {
 	}
 	conversations2 := NewConversationService(db2, ac, encryptor2)
 
-	// Create sample conversation as fake user 2
+	// CreateUser sample conversation as fake user 2
 	_, err = auth2.SignIn("bob@gmail.com", "test1234")
 	if err != nil {
 		panic(err)
@@ -62,19 +58,15 @@ func main() {
 	_ = msg
 	_ = usr2
 
-	// Create conversation service for user1 after the message from user1 was sent because we want
-	//ConversationService for user 2 to attach its WS handlers to APIClient
-	ac.ClearHandlers()
 	_ = NewConversationService(db1, ac, encryptor1)
 	_, err = auth1.SignIn("alice@gmail.com", "test1234")
 	if err != nil {
 		panic(err)
 	}
 
-	users := NewUserService(ac)
 	app := NewApp()
 
-	// Create application with options
+	// CreateUser application with options
 	err = wails.Run(&options.App{
 		Title:  "client",
 		Width:  1024,
@@ -93,18 +85,17 @@ func main() {
 			conversations2.MessageAdded = func(msg models.Message) {
 				runtime.EventsEmit(ctx, "message_added", msg)
 			}
-			ac.SetErrorHandler(func(err error) {
-				runtime.EventsEmit(ctx, "websocket_error", err)
+			ac.SetConnectionStateHandler(func(state api.ConnectionState) {
+				runtime.EventsEmit(ctx, "connection_changed", state)
 			})
 		},
 		OnShutdown: func(ctx context.Context) {
-			_ = ac.Close()
+			ac.Close()
 		},
 		Bind: []interface{}{
 			app,
 			auth2,
 			conversations2,
-			users,
 			encryptor2,
 		},
 	})

@@ -18,7 +18,7 @@ func randomBytes(length int) []byte {
 		panic(fmt.Sprintf("invalid length: %d, length must be non-negative", length))
 	}
 
-	// Create a byte slice of the specified length
+	// CreateUser a byte slice of the specified length
 	bytes := make([]byte, length)
 
 	// Fill the byte slice with random values

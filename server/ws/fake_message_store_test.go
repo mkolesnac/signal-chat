@@ -1,23 +1,23 @@
 package ws
 
 import (
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 	"sync"
 )
 
 // FakeMessageStore implements a fake message store for testing
 type FakeMessageStore struct {
-	messages []api.WSMessage
+	messages []apitypes.WSMessage
 	mu       sync.Mutex
 }
 
 func NewFakeMessageStore() *FakeMessageStore {
 	return &FakeMessageStore{
-		messages: make([]api.WSMessage, 0),
+		messages: make([]apitypes.WSMessage, 0),
 	}
 }
 
-func (f *FakeMessageStore) Store(messages []*api.WSMessage) error {
+func (f *FakeMessageStore) Store(messages []*apitypes.WSMessage) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -31,7 +31,7 @@ func (f *FakeMessageStore) Delete(messageIDs []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	newMessages := make([]api.WSMessage, 0, len(f.messages))
+	newMessages := make([]apitypes.WSMessage, 0, len(f.messages))
 	for _, msg := range f.messages {
 		shouldKeep := true
 		for _, id := range messageIDs {
@@ -49,11 +49,11 @@ func (f *FakeMessageStore) Delete(messageIDs []string) error {
 	return nil
 }
 
-func (f *FakeMessageStore) LoadAll() ([]api.WSMessage, error) {
+func (f *FakeMessageStore) LoadAll() ([]apitypes.WSMessage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	result := make([]api.WSMessage, len(f.messages))
+	result := make([]apitypes.WSMessage, len(f.messages))
 	copy(result, f.messages)
 	return result, nil
 }

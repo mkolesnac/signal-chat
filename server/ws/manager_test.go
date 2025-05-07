@@ -2,12 +2,12 @@ package ws
 
 import (
 	"encoding/json"
+	"signal-chat/internal/apitypes"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"signal-chat/internal/api"
 	"signal-chat/server/conversation"
 )
 
@@ -29,9 +29,9 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 
 		senderID := "user-1"
 		messageID := "msg-123"
-		req := api.NewMessageRequest{
-			ConversationID:   "conv-123",
-			EncryptedMessage: []byte("encrypted-message"),
+		req := apitypes.SendMessageRequest{
+			ConversationID: "conv-123",
+			Content:        []byte("encrypted-message"),
 		}
 
 		// Create fake clients for recipients
@@ -51,7 +51,7 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 
 		// Assert
 		// Check that user-2 received the message
-		var msg1 api.WSMessage
+		var msg1 apitypes.WSMessage
 		select {
 		case msgBytes := <-fakeConn1.writeChan:
 			err := json.Unmarshal(msgBytes, &msg1)
@@ -61,7 +61,7 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 		}
 
 		// Check that user-3 received the message
-		var msg2 api.WSMessage
+		var msg2 apitypes.WSMessage
 		select {
 		case msgBytes := <-fakeConn2.writeChan:
 			err := json.Unmarshal(msgBytes, &msg2)
@@ -71,25 +71,25 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 		}
 
 		// Verify message content
-		assert.Equal(t, api.MessageTypeNewMessage, msg1.Type)
-		assert.Equal(t, api.MessageTypeNewMessage, msg2.Type)
+		assert.Equal(t, apitypes.MessageTypeNewMessage, msg1.Type)
+		assert.Equal(t, apitypes.MessageTypeNewMessage, msg2.Type)
 
-		var payload1 api.WSNewMessagePayload
-		err = json.Unmarshal(msg1.Data, &payload1)
+		var wsPayload1 apitypes.WSNewMessagePayload
+		err = json.Unmarshal(msg1.Data, &wsPayload1)
 		require.NoError(t, err)
 
-		var payload2 api.WSNewMessagePayload
-		err = json.Unmarshal(msg2.Data, &payload2)
+		var wsPayload2 apitypes.WSNewMessagePayload
+		err = json.Unmarshal(msg2.Data, &wsPayload2)
 		require.NoError(t, err)
 
-		assert.Equal(t, messageID, payload1.MessageID)
-		assert.Equal(t, messageID, payload2.MessageID)
-		assert.Equal(t, senderID, payload1.SenderID)
-		assert.Equal(t, senderID, payload2.SenderID)
-		assert.Equal(t, req.ConversationID, payload1.ConversationID)
-		assert.Equal(t, req.ConversationID, payload2.ConversationID)
-		assert.Equal(t, req.EncryptedMessage, payload1.EncryptedMessage)
-		assert.Equal(t, req.EncryptedMessage, payload2.EncryptedMessage)
+		assert.Equal(t, messageID, wsPayload1.MessageID)
+		assert.Equal(t, messageID, wsPayload2.MessageID)
+		assert.Equal(t, senderID, wsPayload1.SenderID)
+		assert.Equal(t, senderID, wsPayload2.SenderID)
+		assert.Equal(t, req.ConversationID, wsPayload1.ConversationID)
+		assert.Equal(t, req.ConversationID, wsPayload2.ConversationID)
+		assert.Equal(t, req.Content, wsPayload1.Content)
+		assert.Equal(t, req.Content, wsPayload2.Content)
 	})
 
 	t.Run("should store message for offline recipients", func(t *testing.T) {
@@ -108,9 +108,9 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 
 		senderID := "user-1"
 		messageID := "msg-456"
-		req := api.NewMessageRequest{
-			ConversationID:   "conv-123",
-			EncryptedMessage: []byte("encrypted-message"),
+		req := apitypes.SendMessageRequest{
+			ConversationID: "conv-123",
+			Content:        []byte("encrypted-message"),
 		}
 
 		// Act
@@ -126,15 +126,15 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 		messages1, err := messageStore1.LoadAll()
 		require.NoError(t, err)
 		require.Len(t, messages1, 1)
-		assert.Equal(t, api.MessageTypeNewMessage, messages1[0].Type)
+		assert.Equal(t, apitypes.MessageTypeNewMessage, messages1[0].Type)
 
-		var payload1 api.WSNewMessagePayload
-		err = json.Unmarshal(messages1[0].Data, &payload1)
+		var wsPayload1 apitypes.WSNewMessagePayload
+		err = json.Unmarshal(messages1[0].Data, &wsPayload1)
 		require.NoError(t, err)
-		assert.Equal(t, messageID, payload1.MessageID)
-		assert.Equal(t, senderID, payload1.SenderID)
-		assert.Equal(t, req.ConversationID, payload1.ConversationID)
-		assert.Equal(t, req.EncryptedMessage, payload1.EncryptedMessage)
+		assert.Equal(t, messageID, wsPayload1.MessageID)
+		assert.Equal(t, senderID, wsPayload1.SenderID)
+		assert.Equal(t, req.ConversationID, wsPayload1.ConversationID)
+		assert.Equal(t, req.Content, wsPayload1.Content)
 
 		messageStore2 := &MessageStore{
 			db:       db,
@@ -143,15 +143,15 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 		messages2, err := messageStore2.LoadAll()
 		require.NoError(t, err)
 		require.Len(t, messages2, 1)
-		assert.Equal(t, api.MessageTypeNewMessage, messages2[0].Type)
+		assert.Equal(t, apitypes.MessageTypeNewMessage, messages2[0].Type)
 
-		var payload2 api.WSNewMessagePayload
-		err = json.Unmarshal(messages2[0].Data, &payload2)
+		var wsPayload2 apitypes.WSNewMessagePayload
+		err = json.Unmarshal(messages2[0].Data, &wsPayload2)
 		require.NoError(t, err)
-		assert.Equal(t, messageID, payload2.MessageID)
-		assert.Equal(t, senderID, payload2.SenderID)
-		assert.Equal(t, req.ConversationID, payload2.ConversationID)
-		assert.Equal(t, req.EncryptedMessage, payload2.EncryptedMessage)
+		assert.Equal(t, messageID, wsPayload2.MessageID)
+		assert.Equal(t, senderID, wsPayload2.SenderID)
+		assert.Equal(t, req.ConversationID, wsPayload2.ConversationID)
+		assert.Equal(t, req.Content, wsPayload2.Content)
 	})
 
 	t.Run("should return error for non-existent conversation", func(t *testing.T) {
@@ -164,9 +164,9 @@ func TestManager_BroadcastNewMessage(t *testing.T) {
 
 		senderID := "user-1"
 		messageID := "msg-789"
-		req := api.NewMessageRequest{
-			ConversationID:   "non-existent-conv",
-			EncryptedMessage: []byte("encrypted-message"),
+		req := apitypes.SendMessageRequest{
+			ConversationID: "non-existent-conv",
+			Content:        []byte("encrypted-message"),
 		}
 
 		// Act
@@ -189,9 +189,9 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 		manager := NewManager(db, convRepo)
 
 		senderID := "user-1"
-		req := api.NewConversationRequest{
+		req := apitypes.CreateConversationRequest{
 			ConversationID: "conv-123",
-			OtherParticipants: []api.Participant{
+			OtherParticipants: []apitypes.Participant{
 				{
 					ID:                     "user-2",
 					KeyDistributionMessage: []byte("key-distribution-message"),
@@ -220,7 +220,7 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 
 		// Assert
 		// Check that user-2 received the message
-		var msg1 api.WSMessage
+		var msg1 apitypes.WSMessage
 		select {
 		case msgBytes := <-fakeConn1.writeChan:
 			err := json.Unmarshal(msgBytes, &msg1)
@@ -230,7 +230,7 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 		}
 
 		// Check that user-3 received the message
-		var msg2 api.WSMessage
+		var msg2 apitypes.WSMessage
 		select {
 		case msgBytes := <-fakeConn2.writeChan:
 			err := json.Unmarshal(msgBytes, &msg2)
@@ -240,14 +240,14 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 		}
 
 		// Verify message content
-		assert.Equal(t, api.MessageTypeNewConversation, msg1.Type)
-		assert.Equal(t, api.MessageTypeNewConversation, msg2.Type)
+		assert.Equal(t, apitypes.MessageTypeNewConversation, msg1.Type)
+		assert.Equal(t, apitypes.MessageTypeNewConversation, msg2.Type)
 
-		var payload1 api.WSNewConversationPayload
+		var payload1 apitypes.WSNewConversationPayload
 		err = json.Unmarshal(msg1.Data, &payload1)
 		require.NoError(t, err)
 
-		var payload2 api.WSNewConversationPayload
+		var payload2 apitypes.WSNewConversationPayload
 		err = json.Unmarshal(msg2.Data, &payload2)
 		require.NoError(t, err)
 
@@ -270,9 +270,9 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 		manager := NewManager(db, convRepo)
 
 		senderID := "user-1"
-		req := api.NewConversationRequest{
+		req := apitypes.CreateConversationRequest{
 			ConversationID: "conv-456",
-			OtherParticipants: []api.Participant{
+			OtherParticipants: []apitypes.Participant{
 				{
 					ID:                     "user-2",
 					KeyDistributionMessage: []byte("key-distribution-message"),
@@ -297,9 +297,9 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 		messages1, err := messageStore1.LoadAll()
 		require.NoError(t, err)
 		require.Len(t, messages1, 1)
-		assert.Equal(t, api.MessageTypeNewConversation, messages1[0].Type)
+		assert.Equal(t, apitypes.MessageTypeNewConversation, messages1[0].Type)
 
-		var payload1 api.WSNewConversationPayload
+		var payload1 apitypes.WSNewConversationPayload
 		err = json.Unmarshal(messages1[0].Data, &payload1)
 		require.NoError(t, err)
 		assert.Equal(t, req.ConversationID, payload1.ConversationID)
@@ -314,9 +314,9 @@ func TestManager_BroadcastNewConversation(t *testing.T) {
 		messages2, err := messageStore2.LoadAll()
 		require.NoError(t, err)
 		require.Len(t, messages2, 1)
-		assert.Equal(t, api.MessageTypeNewConversation, messages2[0].Type)
+		assert.Equal(t, apitypes.MessageTypeNewConversation, messages2[0].Type)
 
-		var payload2 api.WSNewConversationPayload
+		var payload2 apitypes.WSNewConversationPayload
 		err = json.Unmarshal(messages2[0].Data, &payload2)
 		require.NoError(t, err)
 		assert.Equal(t, req.ConversationID, payload2.ConversationID)

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dgraph-io/badger/v4"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 )
 
 type MessageStore struct {
@@ -12,7 +12,7 @@ type MessageStore struct {
 	clientID string
 }
 
-func (m *MessageStore) Store(messages []*api.WSMessage) error {
+func (m *MessageStore) Store(messages []*apitypes.WSMessage) error {
 	wb := m.db.NewWriteBatch()
 	defer wb.Cancel()
 
@@ -52,7 +52,7 @@ func (m *MessageStore) Delete(messageIDs []string) error {
 	return wb.Flush()
 }
 
-func (m *MessageStore) LoadAll() ([]api.WSMessage, error) {
+func (m *MessageStore) LoadAll() ([]apitypes.WSMessage, error) {
 	var items [][]byte
 
 	err := m.db.View(func(txn *badger.Txn) error {
@@ -80,9 +80,9 @@ func (m *MessageStore) LoadAll() ([]api.WSMessage, error) {
 		return nil, nil
 	}
 
-	var messages []api.WSMessage
+	var messages []apitypes.WSMessage
 	for _, item := range items {
-		var msg api.WSMessage
+		var msg apitypes.WSMessage
 		if err := json.Unmarshal(item, &msg); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal stored websocket message: %w", err)
 		}

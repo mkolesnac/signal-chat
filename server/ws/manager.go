@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/dgraph-io/badger/v4"
 	"log"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 	"signal-chat/server/conversation"
 	"sync"
 	"time"
@@ -77,7 +77,7 @@ func (m *Manager) UnregisterClient(clientID string) {
 }
 
 // BroadcastNewConversation sends a notification about a new conversation to all participants
-func (m *Manager) BroadcastNewConversation(senderID string, req api.NewConversationRequest) error {
+func (m *Manager) BroadcastNewConversation(senderID string, req apitypes.CreateConversationRequest) error {
 	participantIDs := make([]string, 0, len(req.OtherParticipants))
 	participantIDs = append(participantIDs, senderID)
 	for _, participant := range req.OtherParticipants {
@@ -85,7 +85,7 @@ func (m *Manager) BroadcastNewConversation(senderID string, req api.NewConversat
 	}
 
 	for _, participant := range req.OtherParticipants {
-		payload := api.WSNewConversationPayload{
+		payload := apitypes.WSNewConversationPayload{
 			ConversationID:         req.ConversationID,
 			SenderID:               senderID,
 			ParticipantIDs:         participantIDs,
@@ -97,15 +97,15 @@ func (m *Manager) BroadcastNewConversation(senderID string, req api.NewConversat
 			return err
 		}
 
-		m.sendMessageToClient(participant.ID, api.MessageTypeNewConversation, payloadBytes)
+		m.sendMessageToClient(participant.ID, apitypes.MessageTypeNewConversation, payloadBytes)
 	}
 
 	return nil
 }
 
 // BroadcastNewMessage sends a notification about a new message to all participants in a conversation
-func (m *Manager) BroadcastNewMessage(senderID, messageID string, req api.NewMessageRequest) error {
-	// Get conversation from the repository
+func (m *Manager) BroadcastNewMessage(senderID, messageID string, req apitypes.SendMessageRequest) error {
+	// get conversation from the repository
 	conv, err := m.conversationRepo.GetConversation(req.ConversationID)
 	if err != nil {
 		return fmt.Errorf("failed to get conv: %w", err)
@@ -122,12 +122,12 @@ func (m *Manager) BroadcastNewMessage(senderID, messageID string, req api.NewMes
 	// Send to all recipients
 	for _, id := range recipientIDs {
 		// Create recipient-specific payload with all participants except the receiver
-		recipientPayload := api.WSNewMessagePayload{
-			ConversationID:   req.ConversationID,
-			MessageID:        messageID,
-			SenderID:         senderID,
-			EncryptedMessage: req.EncryptedMessage,
-			CreatedAt:        time.Now().Unix(),
+		recipientPayload := apitypes.WSNewMessagePayload{
+			ConversationID: req.ConversationID,
+			MessageID:      messageID,
+			SenderID:       senderID,
+			Content:        req.Content,
+			CreatedAt:      time.Now().Unix(),
 		}
 
 		payloadBytes, err := json.Marshal(recipientPayload)
@@ -135,19 +135,19 @@ func (m *Manager) BroadcastNewMessage(senderID, messageID string, req api.NewMes
 			return err
 		}
 
-		m.sendMessageToClient(id, api.MessageTypeNewMessage, payloadBytes)
+		m.sendMessageToClient(id, apitypes.MessageTypeNewMessage, payloadBytes)
 	}
 
 	return nil
 }
 
 // sendMessageToClient sends a message to a specific client or stores it if the client is offline
-func (m *Manager) sendMessageToClient(userID string, msgType api.WSMessageType, payload []byte) {
+func (m *Manager) sendMessageToClient(userID string, msgType apitypes.WSMessageType, payload []byte) {
 	m.mu.RLock()
 	client, exists := m.clients[userID]
 	m.mu.RUnlock()
 
-	message := &api.WSMessage{
+	message := &apitypes.WSMessage{
 		ID:   generateMessageID(),
 		Type: msgType,
 		Data: payload,
@@ -160,7 +160,7 @@ func (m *Manager) sendMessageToClient(userID string, msgType api.WSMessageType, 
 			clientID: userID,
 		}
 
-		if err := messageStore.Store([]*api.WSMessage{message}); err != nil {
+		if err := messageStore.Store([]*apitypes.WSMessage{message}); err != nil {
 			log.Printf("Failed to store message for offline client %s: %v", userID, err)
 		}
 		return

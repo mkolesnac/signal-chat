@@ -1,10 +1,9 @@
-package database_test
+package database
 
 import (
 	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
-	"signal-chat/client/database"
 	"testing"
 )
 
@@ -17,7 +16,7 @@ func TestDatabase_OpenIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 
 		// Act
@@ -36,7 +35,7 @@ func TestDatabase_OpenIntegration(t *testing.T) {
 func TestDatabase_WriteValue(t *testing.T) {
 	t.Run("panics when database not opened", func(t *testing.T) {
 		// Arrange
-		db := database.NewDatabase()
+		db := NewDatabase()
 		// Act & Assert
 		assert.Panics(t, func() { _ = db.Write("123", []byte("test")) })
 	})
@@ -51,7 +50,7 @@ func TestDatabase_WriteValueIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 		err := db.Open("123")
 		if err != nil {
@@ -79,7 +78,7 @@ func TestDatabase_WriteValueIntegration(t *testing.T) {
 func TestDatabase_ReadValue(t *testing.T) {
 	t.Run("panics when database not opened", func(t *testing.T) {
 		// Arrange
-		db := database.NewDatabase()
+		db := NewDatabase()
 		// Act&Assert
 		assert.Panics(t, func() { _, _ = db.Read("123") })
 	})
@@ -94,7 +93,7 @@ func TestDatabase_ReadValueIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 		err := db.Open("123")
 		if err != nil {
@@ -112,7 +111,7 @@ func TestDatabase_ReadValueIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 		err := db.Open("123")
 		if err != nil {
@@ -133,7 +132,7 @@ func TestDatabase_ReadValueIntegration(t *testing.T) {
 func TestDatabase_QueryValues(t *testing.T) {
 	t.Run("panics when database not opened", func(t *testing.T) {
 		// Arrange
-		db := database.NewDatabase()
+		db := NewDatabase()
 		// Act&Assert
 		assert.Panics(t, func() { _, _ = db.Query("123") })
 	})
@@ -148,7 +147,7 @@ func TestDatabase_QueryValuesIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 		err := db.Open("123")
 		if err != nil {
@@ -167,7 +166,7 @@ func TestDatabase_QueryValuesIntegration(t *testing.T) {
 func TestDatabase_DeleteValue(t *testing.T) {
 	t.Run("panics when database not opened", func(t *testing.T) {
 		// Arrange
-		db := database.NewDatabase()
+		db := NewDatabase()
 		// Act&Assert
 		assert.Panics(t, func() { _ = db.Delete("123") })
 	})
@@ -182,7 +181,7 @@ func TestDatabase_DeleteValueIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 		err := db.Open("123")
 		if err != nil {
@@ -199,7 +198,7 @@ func TestDatabase_DeleteValueIntegration(t *testing.T) {
 		// Arrange
 		tf, cleanup := testTempFolder(t)
 		defer cleanup()
-		db := database.Database{BasePath: tf}
+		db := Database{BasePath: tf}
 		defer closeTestDB(t, &db)
 		err := db.Open("123")
 		if err != nil {
@@ -235,7 +234,7 @@ func testTempFolder(t *testing.T) (string, func()) {
 	}
 }
 
-func closeTestDB(t *testing.T, db *database.Database) {
+func closeTestDB(t *testing.T, db *Database) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}

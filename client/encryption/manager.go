@@ -1,7 +1,7 @@
 package encryption
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/crossle/libsignal-protocol-go/ecc"
 	"github.com/crossle/libsignal-protocol-go/groups"
@@ -12,28 +12,30 @@ import (
 	"github.com/crossle/libsignal-protocol-go/session"
 	"github.com/crossle/libsignal-protocol-go/util/keyhelper"
 	"github.com/crossle/libsignal-protocol-go/util/optional"
-	"net/http"
-	"signal-chat/client/apiclient"
 	"signal-chat/client/database"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
 )
 
 type encryptor interface {
-	InitializeKeyStore() (api.KeyBundle, error)
+	InitializeKeyStore() (apitypes.KeyBundle, error)
 	CreateEncryptionGroup(groupID string, recipientIDs []string) (map[string][]byte, error)
 	ProcessSenderKeyDistributionMessage(groupID, senderID string, encryptedMsg []byte) error
 	GroupEncrypt(groupID string, plaintext []byte) (*EncryptedMessage, error)
 	GroupDecrypt(groupID, senderID string, ciphertext []byte) (*DecryptedMessage, error)
 }
 
+type PreKeyAPI interface {
+	GetPreKeyBundle(id string) (apitypes.GetPreKeyBundleResponse, error)
+}
+
 type Manager struct {
-	apiClient  apiclient.Client
+	apiClient  PreKeyAPI
 	store      *KeyStore
 	serializer *serialize.Serializer
 	ciphers    map[string]*session.Cipher
 }
 
-func NewEncryptionManager(db database.DB, apiClient apiclient.Client) *Manager {
+func NewEncryptionManager(db database.DB, apiClient PreKeyAPI) *Manager {
 	serializer := serialize.NewJSONSerializer()
 
 	return &Manager{
@@ -45,32 +47,32 @@ func NewEncryptionManager(db database.DB, apiClient apiclient.Client) *Manager {
 }
 
 // InitializeKeyStore should be called when a new user signs up
-func (s *Manager) InitializeKeyStore() (api.KeyBundle, error) {
+func (s *Manager) InitializeKeyStore() (apitypes.KeyBundle, error) {
 	identityPair, err := keyhelper.GenerateIdentityKeyPair()
 	if err != nil {
-		return api.KeyBundle{}, fmt.Errorf("error generating identity key pair: %w", err)
+		return apitypes.KeyBundle{}, fmt.Errorf("error generating identity key pair: %w", err)
 	}
 	err = s.store.StoreIdentityKeyPair(identityPair)
 	if err != nil {
-		return api.KeyBundle{}, fmt.Errorf("failed to keyStore identity key pair: %w", err)
+		return apitypes.KeyBundle{}, fmt.Errorf("failed to keyStore identity key pair: %w", err)
 	}
 
 	// TODO: handle errors from store methods -> now they panic on error
 	signedPreKeyPair, err := keyhelper.GenerateSignedPreKey(identityPair, 0, s.serializer.SignedPreKeyRecord)
 	if err != nil {
-		return api.KeyBundle{}, fmt.Errorf("error generating signed pre keys: %w", err)
+		return apitypes.KeyBundle{}, fmt.Errorf("error generating signed pre keys: %w", err)
 	}
 	s.store.StoreSignedPreKey(signedPreKeyPair.ID(), signedPreKeyPair)
 
 	preKeyPairs, err := keyhelper.GeneratePreKeys(1, 10, s.serializer.PreKeyRecord)
 	if err != nil {
-		return api.KeyBundle{}, fmt.Errorf("error generating pre keys: %w", err)
+		return apitypes.KeyBundle{}, fmt.Errorf("error generating pre keys: %w", err)
 	}
-	var preKeys []api.PreKey
+	var preKeys []apitypes.PreKey
 	for _, preKeyPair := range preKeyPairs {
 		s.store.StorePreKey(preKeyPair.ID().Value, preKeyPair)
 		preKeyPub := preKeyPair.KeyPair().PublicKey().PublicKey()
-		preKeys = append(preKeys, api.PreKey{
+		preKeys = append(preKeys, apitypes.PreKey{
 			ID:        preKeyPair.ID().Value,
 			PublicKey: preKeyPub[:],
 		})
@@ -80,9 +82,9 @@ func (s *Manager) InitializeKeyStore() (api.KeyBundle, error) {
 
 	identityPub := identityPair.PublicKey().PublicKey().PublicKey()
 	signedPub := signedPreKeyPair.KeyPair().PublicKey().PublicKey()
-	return api.KeyBundle{
+	return apitypes.KeyBundle{
 		IdentityKey: identityPub[:],
-		SignedPreKey: api.SignedPreKey{
+		SignedPreKey: apitypes.SignedPreKey{
 			ID:        signedPreKeyPair.ID(),
 			PublicKey: signedPub[:],
 			Signature: signature[:],
@@ -134,7 +136,7 @@ func (s *Manager) GroupEncrypt(groupID string, plaintext []byte) (*EncryptedMess
 
 	senderKey := s.store.LoadSenderKey(keyName)
 	if senderKey == nil {
-		panic("Sender key for group not found")
+		return nil, errors.New("sender key for group not found")
 	}
 
 	builder := groups.NewGroupSessionBuilder(s.store, s.serializer)
@@ -151,7 +153,7 @@ func (s *Manager) GroupDecrypt(groupID, senderID string, ciphertext []byte) (*De
 	keyName := protocol.NewSenderKeyName(groupID, protocol.NewSignalAddress(senderID, 1))
 	senderKey := s.store.LoadSenderKey(keyName)
 	if senderKey == nil {
-		panic("Sender key for group not found")
+		return nil, errors.New("sender key for group not found")
 	}
 
 	msg, err := protocol.NewSenderKeyMessageFromBytes(ciphertext, s.serializer.SenderKeyMessage)
@@ -228,17 +230,9 @@ func (s *Manager) pairwiseDecrypt(encryptedMsg []byte, senderID string) ([]byte,
 }
 
 func (s *Manager) getPreKeyBundle(recipientID string) (*prekey.Bundle, error) {
-	status, body, err := s.apiClient.Get(api.EndpointUserKeys(recipientID))
+	resp, err := s.apiClient.GetPreKeyBundle(recipientID)
 	if err != nil {
 		return nil, err
-	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("server returned unsuccessful status code: %v", status)
-	}
-	var resp api.GetPrekeyBundleResponse
-	err = json.Unmarshal(body, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshall key bundle from server: %w", err)
 	}
 
 	return prekey.NewBundle(
@@ -248,6 +242,6 @@ func (s *Manager) getPreKeyBundle(recipientID string) (*prekey.Bundle, error) {
 		resp.PreKeyBundle.SignedPreKey.ID,
 		ecc.NewDjbECPublicKey([32]byte(resp.PreKeyBundle.PreKey.PublicKey)),
 		ecc.NewDjbECPublicKey([32]byte(resp.PreKeyBundle.SignedPreKey.PublicKey)),
-		[64]byte(resp.PreKeyBundle.SignedPreKeySignature),
+		[64]byte(resp.PreKeyBundle.SignedPreKey.Signature),
 		identity.NewKey(ecc.NewDjbECPublicKey([32]byte(resp.PreKeyBundle.IdentityKey)))), nil
 }

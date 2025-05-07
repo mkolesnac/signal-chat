@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
-	"net/http"
+	"log"
+	"signal-chat/client/api"
 	"signal-chat/client/database"
 	"signal-chat/client/encryption"
 	"signal-chat/client/models"
-	"signal-chat/internal/api"
+	"signal-chat/internal/apitypes"
+
+	"github.com/google/uuid"
 )
 
 type ConversationCallback func(conv models.Conversation)
@@ -16,9 +18,9 @@ type ConversationCallback func(conv models.Conversation)
 type MessageCallback func(msg models.Message)
 
 type ConversationAPI interface {
-	Get(route string) (int, []byte, error)
-	Post(route string, payload any) (int, []byte, error)
-	Subscribe(eventType api.WSMessageType, handler api.WSHandler)
+	CreateConversation(id string, otherParticipants []apitypes.Participant) error
+	SendMessage(conversationID string, content []byte) (apitypes.SendMessageResponse, error)
+	SetWSMessageHandler(messageType apitypes.WSMessageType, handler api.MessageHandler)
 }
 
 type Encryptor interface {
@@ -44,61 +46,44 @@ func NewConversationService(db database.DB, apiClient ConversationAPI, encryptor
 		encryptor: encryptor,
 	}
 
-	svc.api.Subscribe(api.MessageTypeSync, svc.handleSync)
-	svc.api.Subscribe(api.MessageTypeNewConversation, svc.handleNewConversation)
-	svc.api.Subscribe(api.MessageTypeNewMessage, svc.handleNewMessage)
+	svc.api.SetWSMessageHandler(apitypes.MessageTypeSync, func(data json.RawMessage) {
+		if err := svc.handleSync(data); err != nil {
+			log.Printf("error handling sync message: %v", err)
+		}
+	})
+
+	svc.api.SetWSMessageHandler(apitypes.MessageTypeNewConversation, func(data json.RawMessage) {
+		if err := svc.handleNewConversation(data); err != nil {
+			log.Printf("error handling new conversation message: %v", err)
+		}
+	})
+
+	svc.api.SetWSMessageHandler(apitypes.MessageTypeNewMessage, func(data json.RawMessage) {
+		if err := svc.handleNewMessage(data); err != nil {
+			log.Printf("error handling new message: %v", err)
+		}
+	})
 
 	return svc
 }
 
 func (c *ConversationService) handleSync(data json.RawMessage) error {
-	var s api.WSSyncData
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+	var syncPayload apitypes.WSSyncPayload
+	if err := json.Unmarshal(data, &syncPayload); err != nil {
+		return fmt.Errorf("failed to unmarshall websocket sync payload: %w", err)
 	}
 
-	for _, payload := range s.NewConversations {
-		err := c.encryptor.ProcessSenderKeyDistributionMessage(payload.ConversationID, payload.SenderID, payload.KeyDistributionMessage)
+	for _, message := range syncPayload.Messages {
+		var err error
+		switch message.Type {
+		case apitypes.MessageTypeNewMessage:
+			err = c.handleNewMessage(message.Data)
+		case apitypes.MessageTypeNewConversation:
+			err = c.handleNewConversation(message.Data)
+		default:
+			log.Printf("unhandled websocket message type: %d", message.Type)
+		}
 		if err != nil {
-			return err
-		}
-
-		conv := models.Conversation{
-			ID:           payload.ConversationID,
-			RecipientIDs: payload.RecipientIDs,
-		}
-		if err := c.writeConversation(conv); err != nil {
-			return err
-		}
-	}
-
-	for _, payload := range s.NewMessages {
-		conv, err := c.getConversation(payload.ConversationID)
-		if err != nil {
-			return err
-		}
-
-		decrypted, err := c.encryptor.GroupDecrypt(conv.ID, payload.SenderID, payload.EncryptedMessage)
-		if err != nil {
-			return fmt.Errorf("decryption failed: %w", err)
-		}
-
-		conv.LastMessagePreview = messagePreview(string(decrypted.Plaintext))
-		conv.LastMessageSenderID = payload.SenderID
-		conv.LastMessageTimestamp = payload.Timestamp
-		if err := c.writeConversation(conv); err != nil {
-			return err
-		}
-
-		msg := models.Message{
-			ID:         payload.MessageID,
-			Text:       string(decrypted.Plaintext),
-			SenderID:   payload.SenderID,
-			Timestamp:  payload.Timestamp,
-			Ciphertext: decrypted.Ciphertext,
-			Envelope:   decrypted.Envelope,
-		}
-		if err := c.writeMessage(conv.ID, msg); err != nil {
 			return err
 		}
 	}
@@ -107,22 +92,22 @@ func (c *ConversationService) handleSync(data json.RawMessage) error {
 }
 
 func (c *ConversationService) handleNewConversation(data json.RawMessage) error {
-	var p api.WSNewConversationPayload
+	var p apitypes.WSNewConversationPayload
 	if err := json.Unmarshal(data, &p); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshall websocket message payload: %w", err)
 	}
 
 	err := c.encryptor.ProcessSenderKeyDistributionMessage(p.ConversationID, p.SenderID, p.KeyDistributionMessage)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to process key distribution message: %w", err)
 	}
 
 	conv := models.Conversation{
-		ID:           p.ConversationID,
-		RecipientIDs: p.RecipientIDs,
+		ID:             p.ConversationID,
+		ParticipantIDs: p.ParticipantIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
-		return err
+		return fmt.Errorf("failed to store new conversation in the database: %w", err)
 	}
 
 	if c.ConversationAdded != nil {
@@ -133,26 +118,26 @@ func (c *ConversationService) handleNewConversation(data json.RawMessage) error 
 }
 
 func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
-	var p api.WSNewMessagePayload
-	if err := json.Unmarshal(data, &p); err != nil {
-		return err
+	var payload apitypes.WSNewMessagePayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return fmt.Errorf("failed to unmarshall websocket message payload: %w", err)
 	}
 
-	conv, err := c.getConversation(p.ConversationID)
+	conv, err := c.getConversation(payload.ConversationID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to retrieve conversation for the given message: %w", err)
 	}
 
-	decrypted, err := c.encryptor.GroupDecrypt(conv.ID, p.SenderID, p.EncryptedMessage)
+	decrypted, err := c.encryptor.GroupDecrypt(conv.ID, payload.SenderID, payload.Content)
 	if err != nil {
-		return fmt.Errorf("decryption failed: %w", err)
+		return fmt.Errorf("failed to decrypt message: %w", err)
 	}
 
 	conv.LastMessagePreview = messagePreview(string(decrypted.Plaintext))
-	conv.LastMessageSenderID = p.SenderID
-	conv.LastMessageTimestamp = p.Timestamp
+	conv.LastMessageSenderID = payload.SenderID
+	conv.LastMessageTimestamp = payload.CreatedAt
 	if err := c.writeConversation(conv); err != nil {
-		return err
+		return fmt.Errorf("failed to update conversation in the database: %w", err)
 	}
 
 	if c.ConversationUpdated != nil {
@@ -160,15 +145,15 @@ func (c *ConversationService) handleNewMessage(data json.RawMessage) error {
 	}
 
 	msg := models.Message{
-		ID:         p.MessageID,
+		ID:         payload.MessageID,
 		Text:       string(decrypted.Plaintext),
-		SenderID:   p.SenderID,
-		Timestamp:  p.Timestamp,
+		SenderID:   payload.SenderID,
+		Timestamp:  payload.CreatedAt,
 		Ciphertext: decrypted.Ciphertext,
 		Envelope:   decrypted.Envelope,
 	}
 	if err := c.writeMessage(conv.ID, msg); err != nil {
-		return err
+		return fmt.Errorf("failed to store new message in the database: %w", err)
 	}
 
 	if c.MessageAdded != nil {
@@ -233,38 +218,24 @@ func (c *ConversationService) CreateConversation(recipientIDs []string) (models.
 		return models.Conversation{}, fmt.Errorf("failed to generate key distribution messages: %w", err)
 	}
 
-	recipients := make([]api.Recipient, len(recipientIDs))
+	otherParticipants := make([]apitypes.Participant, len(recipientIDs))
 	for i, id := range recipientIDs {
-		recipients[i] = api.Recipient{
+		otherParticipants[i] = apitypes.Participant{
 			ID:                     id,
 			KeyDistributionMessage: keyMessages[id],
 		}
 	}
-	req := api.CreateConversationRequest{
-		ConversationID: id,
-		Recipients:     recipients,
-	}
 
-	status, body, err := c.api.Post(api.EndpointConversations, req)
-	if err != nil {
-		return models.Conversation{}, err
-	}
-	if status != http.StatusOK {
-		return models.Conversation{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
-	}
-
-	var resp api.CreateConversationResponse
-	err = json.Unmarshal(body, &resp)
-	if err != nil {
-		return models.Conversation{}, fmt.Errorf("got error unmarshalling response from server: %w", err)
+	if err := c.api.CreateConversation(id, otherParticipants); err != nil {
+		return models.Conversation{}, fmt.Errorf("failed to create conversation: %w", err)
 	}
 
 	conv := models.Conversation{
-		ID:           id,
-		RecipientIDs: recipientIDs,
+		ID:             id,
+		ParticipantIDs: recipientIDs,
 	}
 	if err := c.writeConversation(conv); err != nil {
-		return models.Conversation{}, err
+		return models.Conversation{}, fmt.Errorf("failed to store conversation: %w", err)
 	}
 
 	return conv, nil
@@ -284,41 +255,27 @@ func (c *ConversationService) SendMessage(conversationID, messageText string) (m
 		return models.Message{}, fmt.Errorf("failed to encrypt message content: %w", err)
 	}
 
-	req := api.CreateMessageRequest{
-		ConversationID:   conv.ID,
-		EncryptedMessage: encrypted.Serialized,
-	}
-	status, body, err := c.api.Post(api.EndpointMessages, req)
+	resp, err := c.api.SendMessage(conv.ID, encrypted.Serialized)
 	if err != nil {
-		return models.Message{}, err
-	}
-	if status != http.StatusOK {
-		return models.Message{}, fmt.Errorf("server returned unsuccessful status code: %v", status)
-	}
-
-	var resp api.CreateMessageResponse
-	err = json.Unmarshal(body, &resp)
-	if err != nil {
-		return models.Message{}, fmt.Errorf("got error unmarshalling response from server: %w", err)
+		return models.Message{}, fmt.Errorf("failed to send message: %w", err)
 	}
 
 	msg := models.Message{
 		ID:         resp.MessageID,
 		Text:       messageText,
-		Timestamp:  resp.Timestamp,
+		Timestamp:  resp.CreatedAt,
 		Ciphertext: encrypted.Ciphertext,
 		Envelope:   encrypted.Envelope,
 	}
-
 	if err := c.writeMessage(conv.ID, msg); err != nil {
-		return models.Message{}, err
+		return models.Message{}, fmt.Errorf("failed to store message: %w", err)
 	}
 
 	conv.LastMessagePreview = messagePreview(messageText)
 	conv.LastMessageTimestamp = msg.Timestamp
 	conv.LastMessageSenderID = msg.SenderID
 	if err := c.writeConversation(conv); err != nil {
-		return models.Message{}, err
+		return models.Message{}, fmt.Errorf("failed to store updated conversation: %w", err)
 	}
 
 	if c.ConversationUpdated != nil {
@@ -353,12 +310,13 @@ func (c *ConversationService) getConversation(conversationID string) (models.Con
 func (c *ConversationService) writeConversation(conv models.Conversation) error {
 	bytes, err := conv.Serialize()
 	if err != nil {
-		return fmt.Errorf("failed to serialize conversation: %w", err)
+		return err
 	}
-	err = c.db.Write(conversationKey(conv.ID), bytes)
-	if err != nil {
-		return fmt.Errorf("failed to write conversation: %w", err)
+
+	if err := c.db.Write(conversationKey(conv.ID), bytes); err != nil {
+		return err
 	}
+
 	return nil
 }
 
@@ -367,10 +325,11 @@ func (c *ConversationService) writeMessage(conversationID string, msg models.Mes
 	if err != nil {
 		return fmt.Errorf("failed to serialize message: %w", err)
 	}
-	err = c.db.Write(messageKey(conversationID, msg.ID), bytes)
-	if err != nil {
-		return fmt.Errorf("failed to write message: %w", err)
+
+	if err := c.db.Write(messageKey(conversationID, msg.ID), bytes); err != nil {
+		return err
 	}
+
 	return nil
 }
 

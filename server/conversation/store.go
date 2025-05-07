@@ -22,9 +22,7 @@ func NewStore(db *badger.DB) *Store {
 	return &Store{db: db}
 }
 
-func (s *Store) CreateConversation(participantIDs []string) (string, error) {
-	id := uuid.New().String()
-
+func (s *Store) CreateConversation(id string, participantIDs []string) error {
 	err := s.db.Update(func(txn *badger.Txn) error {
 		// Check if conversation already exists
 		_, err := txn.Get(conversationItemKey(id))
@@ -46,10 +44,10 @@ func (s *Store) CreateConversation(participantIDs []string) (string, error) {
 	})
 
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return id, nil
+	return nil
 }
 
 func (s *Store) CreateMessage(senderID, conversationID string, content []byte) (string, error) {

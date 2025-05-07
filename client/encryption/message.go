@@ -15,8 +15,10 @@ type DecryptedMessage struct {
 }
 
 func newEncryptedMessage(ciphertextMsg protocol.CiphertextMessage) *EncryptedMessage {
+	serialized := ciphertextMsg.(*protocol.SenderKeyMessage).SignedSerialize()
+
 	return &EncryptedMessage{
-		Serialized: ciphertextMsg.Serialize(),
+		Serialized: serialized,
 		Ciphertext: getCiphertext(ciphertextMsg),
 		Envelope:   newEnvelope(ciphertextMsg),
 	}

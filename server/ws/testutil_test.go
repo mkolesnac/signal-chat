@@ -19,6 +19,7 @@ func testDB(t *testing.T) (*badger.DB, func()) {
 
 	db, err := badger.Open(opts)
 	require.NoError(t, err)
+
 	return db, func() {
 		err := db.Close()
 		require.NoError(t, err)
